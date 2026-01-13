@@ -166,6 +166,3 @@ results = compare_initializations(
 - Matplotlib >= 3.4.0
 - scikit-learn >= 0.24.0
 
-## License
-
-MIT
