@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rp-study"
+version = "0.1.0"
+description = "Random Projections Study - Tools for analyzing random projections and gradient flow in neural networks"
+readme = "readme.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Itay Ofer"}
+]
+keywords = ["random-projections", "neural-networks", "initialization", "gradient-analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "numpy>=1.20.0",
+    "torch>=1.9.0",
+    "torchvision>=0.10.0",
+    "matplotlib>=3.4.0",
+    "scikit-learn>=0.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov>=2.0",
+    "black>=22.0",
+    "isort>=5.0",
+    "mypy>=0.900",
+]
+notebooks = [
+    "jupyter>=1.0.0",
+    "ipywidgets>=7.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/itayofer/thesis"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
