@@ -173,9 +173,10 @@ def plot_zero_gradient_stats(
 ) -> plt.Figure:
     """Plot zero-gradient statistics across layers.
 
-    Creates two subplots:
+    Creates three subplots:
     1. Zero gradient counts per layer
     2. Zero gradient proportions per layer
+    3. Entirely zero rows per layer (dead neurons)
 
     Args:
         results: ExperimentResults from a gradient analysis experiment.
@@ -194,27 +195,39 @@ def plot_zero_gradient_stats(
     fig, axes = plt.subplots(1, 3, figsize=figsize)
 
     # Zero counts
-    axes[0].bar(layers, zero_counts, color=DEFAULT_COLOR)
+    bars0 = axes[0].bar(layers, zero_counts, color=DEFAULT_COLOR)
     axes[0].set_xlabel("Layer")
     axes[0].set_ylabel("Zero Gradient Count")
     axes[0].set_title("Zero Gradient Entries per Layer")
     axes[0].tick_params(axis="x", rotation=45)
 
     # Zero proportions
-    axes[1].bar(layers, zero_props, color=DEFAULT_COLOR)
+    bars1 = axes[1].bar(layers, zero_props, color=DEFAULT_COLOR)
     axes[1].set_xlabel("Layer")
     axes[1].set_ylabel("Proportion")
     axes[1].set_title("Zero Gradient Proportion per Layer")
     axes[1].tick_params(axis="x", rotation=45)
     axes[1].set_ylim(0, 1)
 
+    # Add text annotation if all values are zero
+    if all(p == 0 for p in zero_props):
+        axes[1].text(0.5, 0.5, "All values = 0%", ha="center", va="center",
+                     transform=axes[1].transAxes, fontsize=12, color="gray",
+                     bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+
     # Zero row proportions
-    axes[2].bar(layers, zero_row_props, color=ZERO_COLOR, alpha=0.7)
+    bars2 = axes[2].bar(layers, zero_row_props, color=ZERO_COLOR, alpha=0.7)
     axes[2].set_xlabel("Layer")
     axes[2].set_ylabel("Proportion")
     axes[2].set_title("Entirely Zero Rows per Layer")
     axes[2].tick_params(axis="x", rotation=45)
     axes[2].set_ylim(0, 1)
+
+    # Add text annotation if all values are zero
+    if all(p == 0 for p in zero_row_props):
+        axes[2].text(0.5, 0.5, "All values = 0%\n(no dead neurons)", ha="center", va="center",
+                     transform=axes[2].transAxes, fontsize=12, color="gray",
+                     bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
 
     plt.tight_layout()
     return fig
@@ -224,6 +237,8 @@ def plot_row_norm_per_layer(
     results: ExperimentResults,
     figsize: Tuple[float, float] = (10, 5),
     show_std: bool = True,
+    exclude_output_layer: bool = False,
+    use_log_scale: bool = False,
 ) -> plt.Figure:
     """Plot mean row-norm of gradients per layer.
 
@@ -231,6 +246,8 @@ def plot_row_norm_per_layer(
         results: ExperimentResults from a gradient analysis experiment.
         figsize: Figure size.
         show_std: Whether to show standard deviation as error bars.
+        exclude_output_layer: If True, exclude the output layer from the plot.
+        use_log_scale: If True, use logarithmic y-axis scale.
 
     Returns:
         Matplotlib figure.
@@ -238,21 +255,34 @@ def plot_row_norm_per_layer(
     grad_stats = results.grad_stats
 
     layers = list(grad_stats.keys())
-    mean_norms = [stats.mean_row_norm for stats in grad_stats.values()]
+    stats_list = list(grad_stats.values())
+
+    # Exclude output layer if requested
+    if exclude_output_layer and len(layers) > 1:
+        layers = layers[:-1]
+        stats_list = stats_list[:-1]
+
+    mean_norms = [stats.mean_row_norm for stats in stats_list]
 
     fig, ax = plt.subplots(figsize=figsize)
 
     if show_std:
-        std_norms = [np.std(stats.row_norms) for stats in grad_stats.values()]
+        std_norms = [np.std(stats.row_norms) for stats in stats_list]
         ax.errorbar(layers, mean_norms, yerr=std_norms, fmt="o-", capsize=5, color=DEFAULT_COLOR)
     else:
         ax.plot(layers, mean_norms, "o-", color=DEFAULT_COLOR)
 
     ax.set_xlabel("Layer")
     ax.set_ylabel("Mean Row L2 Norm")
-    ax.set_title("Average Gradient Row Norm per Layer")
+
+    title_suffix = " (hidden layers only)" if exclude_output_layer else ""
+    ax.set_title(f"Average Gradient Row Norm per Layer{title_suffix}")
+
     ax.tick_params(axis="x", rotation=45)
     ax.grid(True, alpha=0.3)
+
+    if use_log_scale:
+        ax.set_yscale("log")
 
     plt.tight_layout()
     return fig
@@ -295,6 +325,12 @@ def plot_activation_zero_stats(
     axes[1].tick_params(axis="x", rotation=45)
     axes[1].set_ylim(0, 1)
 
+    # Add text annotation if all values are zero
+    if all(p == 0 for p in inactive_props):
+        axes[1].text(0.5, 0.5, "All values = 0%\n(no dead neurons)", ha="center", va="center",
+                     transform=axes[1].transAxes, fontsize=12, color="gray",
+                     bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+
     plt.tight_layout()
     return fig
 
@@ -303,6 +339,8 @@ def compare_initializations_plot(
     results_dict: Dict[str, ExperimentResults],
     metric: str = "zero_proportion",
     figsize: Tuple[float, float] = (12, 5),
+    exclude_output_layer: bool = True,
+    use_log_scale: bool = False,
 ) -> plt.Figure:
     """Compare gradient statistics across different initializations.
 
@@ -310,6 +348,9 @@ def compare_initializations_plot(
         results_dict: Dictionary mapping init name to ExperimentResults.
         metric: Metric to compare ("zero_proportion", "mean_row_norm", "zero_row_proportion").
         figsize: Figure size.
+        exclude_output_layer: If True, exclude the output layer from plots (default True).
+                             The output layer often has much larger gradients, dominating the y-axis.
+        use_log_scale: If True, use logarithmic y-axis scale.
 
     Returns:
         Matplotlib figure.
@@ -318,15 +359,21 @@ def compare_initializations_plot(
 
     for init_name, results in results_dict.items():
         layers = list(results.grad_stats.keys())
+        stats_list = list(results.grad_stats.values())
+
+        # Exclude output layer if requested (last layer typically has much larger gradients)
+        if exclude_output_layer and len(layers) > 1:
+            layers = layers[:-1]
+            stats_list = stats_list[:-1]
 
         if metric == "zero_proportion":
-            values = [s.zero_proportion for s in results.grad_stats.values()]
-            ylabel = "Zero Gradient Proportion"
+            values = [s.zero_proportion for s in stats_list]
+            ylabel = "Zero Gradient Entry Proportion"
         elif metric == "mean_row_norm":
-            values = [s.mean_row_norm for s in results.grad_stats.values()]
+            values = [s.mean_row_norm for s in stats_list]
             ylabel = "Mean Row Norm"
         elif metric == "zero_row_proportion":
-            values = [s.zero_row_proportion for s in results.grad_stats.values()]
+            values = [s.zero_row_proportion for s in stats_list]
             ylabel = "Zero Row Proportion"
         else:
             raise ValueError(f"Unknown metric: {metric}")
@@ -335,10 +382,16 @@ def compare_initializations_plot(
 
     ax.set_xlabel("Layer")
     ax.set_ylabel(ylabel)
-    ax.set_title(f"Comparison of {metric} across Initializations")
+
+    title_suffix = " (hidden layers only)" if exclude_output_layer else ""
+    ax.set_title(f"Comparison of {metric} across Initializations{title_suffix}")
+
     ax.legend()
     ax.grid(True, alpha=0.3)
     ax.tick_params(axis="x", rotation=45)
+
+    if use_log_scale:
+        ax.set_yscale("log")
 
     plt.tight_layout()
     return fig

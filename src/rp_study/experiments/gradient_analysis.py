@@ -89,6 +89,22 @@ class ExperimentResults:
         """Get mean row norms per layer."""
         return {k: v.mean_row_norm for k, v in self.grad_stats.items()}
 
+    def get_activation_zero_proportions(self) -> Dict[str, float]:
+        """Get zero activation proportions per layer.
+
+        This measures the proportion of activation values that are exactly zero
+        (due to ReLU). This should be ~50% for all initializations.
+        """
+        return {f"L{s.layer_idx}": s.zero_proportion for s in self.activation_stats}
+
+    def get_truly_inactive_proportions(self) -> Dict[str, float]:
+        """Get proportion of truly inactive neurons per layer.
+
+        A neuron is "truly inactive" if it outputs zero for ALL samples in the batch.
+        This is the neuron death phenomenon from the thesis.
+        """
+        return {f"L{s.layer_idx}": s.truly_inactive_proportion for s in self.activation_stats}
+
 
 class GradientExperiment:
     """Experiment class for analyzing gradient flow in neural networks.
