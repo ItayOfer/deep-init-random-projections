@@ -100,6 +100,10 @@ def row_centered_he_init(layer: nn.Linear, **kwargs) -> None:
     ensuring each row sums to zero. Biases are set to zero.
 
     This variant may have different gradient flow properties.
+
+    Note: Row-centering reduces variance by a factor of (1 - 1/d), which can
+    cause gradient vanishing in deep networks. See row_centered_he_var_adj
+    for a variance-adjusted version.
     """
     fan_in = layer.weight.shape[1]
     std = math.sqrt(2.0 / fan_in)
@@ -108,6 +112,158 @@ def row_centered_he_init(layer: nn.Linear, **kwargs) -> None:
         layer.weight.normal_(mean=0.0, std=std)
         # Subtract row mean to center each row
         layer.weight -= layer.weight.mean(dim=1, keepdim=True)
+        if layer.bias is not None:
+            layer.bias.zero_()
+
+
+@register_initializer("row_centered_he_var_adj")
+def row_centered_he_var_adj_init(layer: nn.Linear, **kwargs) -> None:
+    """Row-centered He initialization with variance adjustment.
+
+    This initialization combines the geometric benefits of row-centering
+    (preventing geometric collapse) with proper variance scaling to maintain
+    healthy gradient flow in deep networks.
+
+    The procedure:
+    1. Sample weights from N(0, sigma^2) where sigma^2 = 2/fan_in (He init)
+    2. Center each row by subtracting its mean (for geometric properties)
+    3. Rescale each row to restore He variance: W_row *= sqrt(2/d) / std(W_row)
+
+    Mathematical background:
+    - Row-centering reduces variance by factor (1 - 1/d) because:
+      Var(w_j - mean(w)) = Var(w_j) * (1 - 1/d)
+    - This causes gradients to decay as (1 - 1/d)^L in L-layer networks
+    - Rescaling restores the target variance of 2/d per element
+
+    This ensures:
+    - Each row sums to zero (geometric collapse prevention)
+    - Each row has the correct He variance (healthy gradient flow)
+    """
+    fan_in = layer.weight.shape[1]
+    target_std = math.sqrt(2.0 / fan_in)
+
+    with torch.no_grad():
+        # Step 1: Sample from He distribution
+        layer.weight.normal_(mean=0.0, std=target_std)
+
+        # Step 2: Center each row (subtract row mean)
+        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
+
+        # Step 3: Rescale each row to restore He variance
+        # Compute std of each row and rescale to target_std
+        # Use unbiased=False to match numpy's default (population std)
+        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
+        # Avoid division by zero for edge cases
+        row_stds = torch.clamp(row_stds, min=1e-8)
+        layer.weight *= target_std / row_stds
+
+        if layer.bias is not None:
+            layer.bias.zero_()
+
+
+@register_initializer("partial_centered_he")
+def partial_centered_he_init(layer: nn.Linear, alpha: float = 0.5, **kwargs) -> None:
+    """Partial row-centered He initialization.
+
+    Instead of forcing rows to sum to exactly zero (which creates a hard
+    constraint that may trap gradients), this uses a "soft" centering with
+    parameter alpha < 1.
+
+    The procedure:
+    1. Sample weights from N(0, sigma^2) where sigma^2 = 2/fan_in (He init)
+    2. Partially center: W = W - alpha * mean(W, dim=1)
+    3. Rescale each row to restore He variance
+
+    Args:
+        layer: Layer to initialize.
+        alpha: Centering strength (0 = no centering, 1 = full centering).
+               Default 0.5 provides partial geometric benefit without full constraint.
+
+    This allows tuning the trade-off between geometric collapse prevention
+    (higher alpha) and gradient flow (lower alpha).
+    """
+    fan_in = layer.weight.shape[1]
+    target_std = math.sqrt(2.0 / fan_in)
+
+    with torch.no_grad():
+        layer.weight.normal_(mean=0.0, std=target_std)
+
+        # Partial centering
+        layer.weight -= alpha * layer.weight.mean(dim=1, keepdim=True)
+
+        # Rescale to restore He variance
+        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
+        row_stds = torch.clamp(row_stds, min=1e-8)
+        layer.weight *= target_std / row_stds
+
+        if layer.bias is not None:
+            layer.bias.zero_()
+
+
+@register_initializer("orthogonal_he")
+def orthogonal_he_init(layer: nn.Linear, **kwargs) -> None:
+    """Orthogonal initialization with He-like scaling.
+
+    Uses QR decomposition to create orthogonal rows (for square matrices)
+    or semi-orthogonal rows (for non-square). The rows are orthogonal to
+    each other but do NOT have the zero-sum constraint.
+
+    This provides geometric benefits (orthogonal rows prevent collapse)
+    without the "gradient trap" caused by zero-sum rows.
+
+    The procedure:
+    1. Sample random matrix from N(0, 1)
+    2. Apply QR decomposition to get orthogonal matrix Q
+    3. Scale by sqrt(2) to approximate He variance for ReLU
+
+    Note: For ReLU networks, gain=sqrt(2) is recommended.
+    """
+    # Use PyTorch's orthogonal init with gain=sqrt(2) for ReLU
+    nn.init.orthogonal_(layer.weight, gain=math.sqrt(2.0))
+    if layer.bias is not None:
+        nn.init.zeros_(layer.bias)
+
+
+@register_initializer("centered_with_dc_he")
+def centered_with_dc_he_init(layer: nn.Linear, dc_scale: float = 0.1, **kwargs) -> None:
+    """Row-centered He initialization with DC component restored.
+
+    After row-centering (which forces row sums to zero), this adds back
+    a small constant (DC component) to break the zero-sum constraint
+    while preserving most of the centering benefit.
+
+    The procedure:
+    1. Sample weights from N(0, sigma^2) where sigma^2 = 2/fan_in (He init)
+    2. Center each row by subtracting its mean
+    3. Rescale to restore He variance
+    4. Add DC component: W = W + dc_scale * sqrt(2/fan_in)
+
+    Args:
+        layer: Layer to initialize.
+        dc_scale: Scale of the DC component relative to He std.
+                  Default 0.1 adds a small constant to break zero-sum.
+
+    The DC component breaks the structural constraint that traps gradients,
+    while the centering still provides geometric benefits.
+    """
+    fan_in = layer.weight.shape[1]
+    target_std = math.sqrt(2.0 / fan_in)
+
+    with torch.no_grad():
+        # Standard He init
+        layer.weight.normal_(mean=0.0, std=target_std)
+
+        # Center each row
+        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
+
+        # Rescale to restore variance
+        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
+        row_stds = torch.clamp(row_stds, min=1e-8)
+        layer.weight *= target_std / row_stds
+
+        # Add DC component to break zero-sum constraint
+        layer.weight += dc_scale * target_std
+
         if layer.bias is not None:
             layer.bias.zero_()
 
