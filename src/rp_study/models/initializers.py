@@ -162,7 +162,7 @@ def row_centered_he_var_adj_init(layer: nn.Linear, **kwargs) -> None:
 
 
 @register_initializer("partial_centered_he")
-def partial_centered_he_init(layer: nn.Linear, alpha: float = 0.5, **kwargs) -> None:
+def partial_centered_he_init(layer: nn.Linear, alpha: float = 0.1, **kwargs) -> None:
     """Partial row-centered He initialization.
 
     Instead of forcing rows to sum to exactly zero (which creates a hard
@@ -220,6 +220,21 @@ def orthogonal_he_init(layer: nn.Linear, **kwargs) -> None:
     """
     # Use PyTorch's orthogonal init with gain=sqrt(2) for ReLU
     nn.init.orthogonal_(layer.weight, gain=math.sqrt(2.0))
+    if layer.bias is not None:
+        nn.init.zeros_(layer.bias)
+
+
+@register_initializer("orthogonal_tuned")
+def orthogonal_tuned_init(layer: nn.Linear, **kwargs) -> None:
+    """Orthogonal initialization with tuned gain for row-centered-like networks.
+
+    Same as orthogonal_he but with gain=sqrt(1.65) instead of sqrt(2).
+    This accounts for the higher neuron survival rate (~60% vs 50%)
+    that we observed empirically with structured initializations.
+
+    Use this if orthogonal_he (gain=sqrt(2)) still shows mild explosion.
+    """
+    nn.init.orthogonal_(layer.weight, gain=math.sqrt(1.65))
     if layer.bias is not None:
         nn.init.zeros_(layer.bias)
 
@@ -340,3 +355,116 @@ def orthogonal_init(layer: nn.Linear, gain: float = 1.0, **kwargs) -> None:
     nn.init.orthogonal_(layer.weight, gain=gain)
     if layer.bias is not None:
         nn.init.zeros_(layer.bias)
+
+@register_initializer("kernel_preserving")
+def kernel_preserving_init(
+    layer: nn.Linear,
+    n_samples: int = 500,
+    n_pairs: int = 1000,
+    lr: float = 0.01,
+    n_steps: int = 200,
+    norm_weight: float = 1.0,
+    **kwargs,
+) -> None:
+    """Kernel-preserving initialization via optimization.
+
+    Finds W that minimizes the discrepancy between input and output inner
+    products after ReLU, i.e.:
+
+        min_W  sum_{i,j} ( <ReLU(Wx_i), ReLU(Wx_j)> - <x_i, x_j> )^2
+
+    Subject to norm preservation: E[||Wx||^2] = ||x||^2 for unit vectors.
+
+    This is motivated by the ReLU kernel K(alpha) which always contracts
+    angles. We seek W such that the contraction is minimized.
+
+    The optimization uses synthetic unit vectors as proxies (data-independent
+    in distribution, but the solution generalizes because the objective is
+    over random directions).
+
+    Args:
+        layer: Layer to initialize.
+        n_samples: Number of random unit vectors to use.
+        n_pairs: Number of random pairs to sample for the objective.
+        lr: Learning rate for Adam optimizer.
+        n_steps: Number of optimization steps.
+        norm_weight: Weight for norm preservation constraint in loss.
+    """
+    fan_in = layer.weight.shape[1]
+    fan_out = layer.weight.shape[0]
+
+    # Start from He initialization as a warm start
+    nn.init.kaiming_normal_(layer.weight, a=0.0, mode="fan_in", nonlinearity="relu")
+
+    # Generate random unit vectors as proxy data
+    X = torch.randn(n_samples, fan_in)
+    X = X / X.norm(dim=1, keepdim=True)
+
+    # Random pairs for kernel objective
+    idx_i = torch.randint(0, n_samples, (n_pairs,))
+    idx_j = torch.randint(0, n_samples, (n_pairs,))
+
+    # Precompute input inner products for the sampled pairs
+    input_ips = (X[idx_i] * X[idx_j]).sum(dim=1)  # <x_i, x_j>
+
+    # Temporarily enable gradients for optimization
+    layer.weight.requires_grad_(True)
+
+    optimizer = torch.optim.Adam([layer.weight], lr=lr)
+
+    for step in range(n_steps):
+        optimizer.zero_grad()
+
+        # Forward: compute ReLU(Wx^T) for all samples
+        # layer.weight is (fan_out, fan_in), X is (n_samples, fan_in)
+        # output: (n_samples, fan_out)
+        out = torch.relu(X @ layer.weight.t())
+
+        # Kernel preservation loss: match inner products
+        out_i = out[idx_i]  # (n_pairs, fan_out)
+        out_j = out[idx_j]  # (n_pairs, fan_out)
+        output_ips = (out_i * out_j).sum(dim=1) / fan_out  # normalize by d_out
+        kernel_loss = ((output_ips - input_ips) ** 2).mean()
+
+        # Norm preservation loss: E[||ReLU(Wx)||^2] should scale properly
+        norms_sq = (out ** 2).sum(dim=1) / fan_out  # should be ~1 for unit inputs
+        norm_loss = ((norms_sq - 1.0) ** 2).mean()
+
+        loss = kernel_loss + norm_weight * norm_loss
+        loss.backward()
+        optimizer.step()
+
+    # Disable gradients and detach
+    layer.weight.requires_grad_(False)
+
+    if layer.bias is not None:
+        nn.init.zeros_(layer.bias)
+
+
+@register_initializer("row_centered_final")
+def row_centered_final_init(layer: nn.Linear, **kwargs) -> None:
+    """Row-centered initialization with Tuned Variance (Factor ~1.65).
+
+    Data-driven tuning:
+    - Factor 1.0 (Xavier) -> Vanishing (Gain ~0.77)
+    - Factor 1.8 (Optimized) -> Mild Explosion (Gain ~1.04)
+    - Factor 2.0 (He) -> Strong Explosion (Gain ~1.05+)
+    
+    Implied Active Fraction is ~60%.
+    To achieve Gain=1.0, we need Factor = 1 / 0.6 = 1.66.
+    """
+    fan_in = layer.weight.shape[1]
+    
+    # MAGIC NUMBER: 1.65
+    target_std = math.sqrt(1.65 / fan_in)
+
+    with torch.no_grad():
+        layer.weight.normal_(mean=0.0, std=target_std)
+        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
+        
+        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
+        row_stds = torch.clamp(row_stds, min=1e-8)
+        layer.weight *= target_std / row_stds
+        
+        if layer.bias is not None:
+            layer.bias.zero_()
