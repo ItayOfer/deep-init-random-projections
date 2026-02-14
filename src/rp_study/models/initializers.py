@@ -162,7 +162,7 @@ def row_centered_he_var_adj_init(layer: nn.Linear, **kwargs) -> None:
 
 
 @register_initializer("partial_centered_he")
-def partial_centered_he_init(layer: nn.Linear, alpha: float = 0.1, **kwargs) -> None:
+def partial_centered_he_init(layer: nn.Linear, alpha: float = 0.5, **kwargs) -> None:
     """Partial row-centered He initialization.
 
     Instead of forcing rows to sum to exactly zero (which creates a hard

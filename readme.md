@@ -20,16 +20,19 @@ pip install torch torchvision matplotlib scikit-learn numpy
 
 ```
 Thesis/
+├── CLAUDE.md                  # Agent context (auto-loaded by Claude Code)
+├── CONTEXT.md                 # Thesis research context and current state
+├── INITIALIZERS.md            # Mathematical reference for all initializers
 ├── src/rp_study/              # Main Python package
 │   ├── config.py              # Configuration dataclasses
 │   ├── data/                  # Data loading utilities
 │   │   ├── loaders.py         # MNIST, Fashion-MNIST loaders
 │   │   └── shapes.py          # Synthetic shape generators
 │   ├── models/                # Neural network models
-│   │   ├── initializers.py    # Extensible initialization strategies
+│   │   ├── initializers.py    # Extensible initialization strategies (13 strategies)
 │   │   └── networks.py        # FeedForward network class
 │   ├── projections/           # Random projection utilities
-│   │   └── random_projections.py
+│   │   └── random_projections.py  # Includes multi_layer_rp_with_init() bridge
 │   ├── experiments/           # Experiment frameworks
 │   │   └── gradient_analysis.py
 │   ├── analysis/              # Theoretical analysis
@@ -42,7 +45,8 @@ Thesis/
 │   ├── 01_shape_experiments.ipynb
 │   ├── 02_mnist_projections.ipynb
 │   ├── 03_gradient_analysis.ipynb
-│   └── 04_kernel_analysis.ipynb
+│   ├── 04_kernel_analysis.ipynb
+│   └── 05_initializer_dashboard.ipynb  # Unified one-stop-shop for analysis
 ├── Random_Projections.ipynb   # Original notebook (reference)
 └── pyproject.toml             # Package configuration
 ```
@@ -79,16 +83,26 @@ gradient_plots.plot_zero_gradient_stats(results)
 
 ## Available Initialization Strategies
 
-The package includes an extensible initialization system. Built-in strategies:
+The package includes an extensible initialization system with 13 built-in strategies.
+See [INITIALIZERS.md](INITIALIZERS.md) for mathematical definitions and motivations.
+
+Key strategies:
 
 | Strategy | Description |
 |----------|-------------|
-| `he` | Standard He/Kaiming initialization: N(0, sqrt(2/fan_in)) |
-| `row_centered_he` | He initialization with row means subtracted |
-| `custom_variance` | Custom variance: N(mean, sqrt(variance)) |
+| `he` | Standard He/Kaiming: N(0, sqrt(2/d)) |
+| `row_centered_he` | He + row means subtracted (prevents geometric collapse) |
+| `row_centered_he_var_adj` | Row-centered + variance restored to He level |
+| `partial_centered_he` | Soft centering with alpha parameter (default 0.5) |
+| `orthogonal_he` | QR orthogonal with gain=sqrt(2) |
+| `orthogonal_tuned` | QR orthogonal with tuned gain=sqrt(1.65) |
+| `centered_with_dc_he` | Row-centered + DC component to break zero-sum |
+| `kernel_preserving` | Optimization-based kernel preservation |
+| `row_centered_final` | Row-centered with tuned factor 1.65 |
+| `custom_variance` | Custom variance N(mean, sqrt(v)) |
 | `xavier` | Xavier/Glorot initialization |
 | `uniform_he` | Uniform distribution with He-like variance |
-| `orthogonal` | Orthogonal weight initialization |
+| `orthogonal` | Orthogonal weight initialization (configurable gain) |
 
 ### Adding New Initializers
 
@@ -127,13 +141,16 @@ X, y = get_data_loader("fashion_mnist", num_samples=1000)
 ### Random Projections
 
 ```python
-from rp_study.projections import random_projection_matrix, multi_layer_projection
+from rp_study.projections import random_projection_matrix, multi_layer_projection, multi_layer_rp_with_init
 
 # Single projection matrix
 R = random_projection_matrix(784, 2, variance="he")
 
-# Multi-layer RP + ReLU
+# Multi-layer RP + ReLU (basic, He variance)
 X_projected = multi_layer_projection(X, num_layers=10, mode="square")
+
+# Multi-layer RP + ReLU with any registry initializer
+X_projected = multi_layer_rp_with_init(X, n_layers=10, init_strategy="row_centered_he")
 ```
 
 ### Gradient Analysis
@@ -157,6 +174,7 @@ results = compare_initializations(
 | `02_mnist_projections` | MNIST/Fashion-MNIST projections, initialization comparison |
 | `03_gradient_analysis` | Gradient flow analysis with different initializations |
 | `04_kernel_analysis` | K(α) arc-cosine kernel theoretical analysis |
+| `05_initializer_dashboard` | **Unified one-stop-shop**: geometry + gradients + statistics |
 
 ## Requirements
 

@@ -60,10 +60,13 @@ deep_net = create_deep_network(num_hidden_layers=100, hidden_widths="random")
 Random projection utilities.
 
 ```python
-from rp_study.projections import random_projection_matrix, multi_layer_projection
+from rp_study.projections import random_projection_matrix, multi_layer_projection, multi_layer_rp_with_init
 
 R = random_projection_matrix(784, 2, variance="he")
 X_proj = multi_layer_projection(X, num_layers=10, mode="square")
+
+# Use any registry initializer for multi-layer RP + ReLU
+X_proj = multi_layer_rp_with_init(X, n_layers=10, init_strategy="row_centered_he")
 ```
 
 ### experiments/

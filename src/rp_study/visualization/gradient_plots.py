@@ -16,6 +16,27 @@ from ..experiments.gradient_analysis import ExperimentResults, LayerGradientStat
 ZERO_COLOR = "red"
 DEFAULT_COLOR = "steelblue"
 
+# Distinct markers for multi-line comparison plots
+_MARKERS = ["o", "s", "^", "D", "v", "P", "X", "*", "h", "<", ">", "p"]
+
+
+def _thin_xticks(ax, labels: List[str], max_ticks: int = 10) -> None:
+    """Show at most max_ticks evenly-spaced x-axis labels.
+
+    Keeps the first and last label visible, and distributes the rest
+    evenly. When there are <= max_ticks labels, all are shown.
+    """
+    n = len(labels)
+    if n <= max_ticks:
+        return  # nothing to thin
+
+    step = max(1, (n - 1) // (max_ticks - 1))
+    visible = set(range(0, n, step))
+    visible.add(n - 1)  # always show last
+
+    ax.set_xticks([labels[i] for i in sorted(visible)])
+    ax.set_xticklabels([labels[i] for i in sorted(visible)])
+
 
 def plot_gradient_histograms(
     results: ExperimentResults,
@@ -229,6 +250,10 @@ def plot_zero_gradient_stats(
                      transform=axes[2].transAxes, fontsize=12, color="gray",
                      bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
 
+    # Thin x-axis labels for deep networks
+    for ax_item in axes:
+        _thin_xticks(ax_item, layers)
+
     plt.tight_layout()
     return fig
 
@@ -280,6 +305,9 @@ def plot_row_norm_per_layer(
 
     ax.tick_params(axis="x", rotation=45)
     ax.grid(True, alpha=0.3)
+
+    # Thin x-axis labels for deep networks
+    _thin_xticks(ax, layers)
 
     if use_log_scale:
         ax.set_yscale("log")
@@ -357,7 +385,9 @@ def compare_initializations_plot(
     """
     fig, ax = plt.subplots(figsize=figsize)
 
-    for init_name, results in results_dict.items():
+    all_layers = None  # track for x-axis thinning
+
+    for idx, (init_name, results) in enumerate(results_dict.items()):
         layers = list(results.grad_stats.keys())
         stats_list = list(results.grad_stats.values())
 
@@ -365,6 +395,9 @@ def compare_initializations_plot(
         if exclude_output_layer and len(layers) > 1:
             layers = layers[:-1]
             stats_list = stats_list[:-1]
+
+        if all_layers is None:
+            all_layers = layers
 
         if metric == "zero_proportion":
             values = [s.zero_proportion for s in stats_list]
@@ -378,7 +411,9 @@ def compare_initializations_plot(
         else:
             raise ValueError(f"Unknown metric: {metric}")
 
-        ax.plot(layers, values, "o-", label=init_name)
+        marker = _MARKERS[idx % len(_MARKERS)]
+        ax.plot(layers, values, marker=marker, linestyle="-", markersize=4,
+                label=init_name, linewidth=1.5)
 
     ax.set_xlabel("Layer")
     ax.set_ylabel(ylabel)
@@ -386,9 +421,13 @@ def compare_initializations_plot(
     title_suffix = " (hidden layers only)" if exclude_output_layer else ""
     ax.set_title(f"Comparison of {metric} across Initializations{title_suffix}")
 
-    ax.legend()
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     ax.tick_params(axis="x", rotation=45)
+
+    # Thin x-axis labels for deep networks
+    if all_layers is not None:
+        _thin_xticks(ax, all_layers)
 
     if use_log_scale:
         ax.set_yscale("log")

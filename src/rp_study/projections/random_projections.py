@@ -207,6 +207,56 @@ def _multi_layer_projection_torch(
     return X_layer
 
 
+def multi_layer_rp_with_init(
+    X: np.ndarray,
+    n_layers: int,
+    init_strategy: str = "he",
+    width: Optional[int] = None,
+    seed: Optional[int] = None,
+    **init_kwargs,
+) -> np.ndarray:
+    """Apply multi-layer RP + ReLU using registry initializers.
+
+    This bridges geometry experiments (numpy data) with the registry-based
+    initializers (torch nn.Linear), ensuring a single source of truth for
+    initialization logic.
+
+    Args:
+        X: Input data of shape (n_samples, d_in), numpy array.
+        n_layers: Number of projection layers to apply.
+        init_strategy: Name from the initializer registry (e.g., "he",
+            "row_centered_he", "orthogonal_he").
+        width: Width of each hidden layer. Defaults to d_in (square projections).
+        seed: Optional random seed for reproducibility.
+        **init_kwargs: Extra kwargs passed to the initializer (e.g., alpha=0.5).
+
+    Returns:
+        Transformed numpy array of shape (n_samples, width) after n_layers
+        of (Linear + ReLU).
+    """
+    import torch.nn as nn
+    from ..models.initializers import initialize_layer
+
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+
+    d_in = X.shape[1]
+    w = width or d_in
+
+    X_tensor = torch.from_numpy(X).float()
+
+    with torch.no_grad():
+        current_dim = d_in
+        for _ in range(n_layers):
+            layer = nn.Linear(current_dim, w, bias=False)
+            initialize_layer(layer, strategy=init_strategy, **init_kwargs)
+            X_tensor = torch.relu(X_tensor @ layer.weight.t())
+            current_dim = w
+
+    return X_tensor.numpy()
+
+
 def jl_projection(
     X: np.ndarray,
     target_dim: int,

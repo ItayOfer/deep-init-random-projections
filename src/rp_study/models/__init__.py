@@ -6,7 +6,4 @@ from .initializers import (
     register_initializer,
     initialize_layer,
     list_initializers,
-    he_init,
-    row_centered_he_init,
-    custom_variance_init,
 )
