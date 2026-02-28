@@ -392,17 +392,18 @@ def kernel_preserving_init(
     """
     fan_in = layer.weight.shape[1]
     fan_out = layer.weight.shape[0]
+    device = layer.weight.device
 
     # Start from He initialization as a warm start
     nn.init.kaiming_normal_(layer.weight, a=0.0, mode="fan_in", nonlinearity="relu")
 
-    # Generate random unit vectors as proxy data
-    X = torch.randn(n_samples, fan_in)
+    # Generate random unit vectors as proxy data (on same device as layer)
+    X = torch.randn(n_samples, fan_in, device=device)
     X = X / X.norm(dim=1, keepdim=True)
 
     # Random pairs for kernel objective
-    idx_i = torch.randint(0, n_samples, (n_pairs,))
-    idx_j = torch.randint(0, n_samples, (n_pairs,))
+    idx_i = torch.randint(0, n_samples, (n_pairs,), device=device)
+    idx_j = torch.randint(0, n_samples, (n_pairs,), device=device)
 
     # Precompute input inner products for the sampled pairs
     input_ips = (X[idx_i] * X[idx_j]).sum(dim=1)  # <x_i, x_j>
@@ -441,6 +442,103 @@ def kernel_preserving_init(
         nn.init.zeros_(layer.bias)
 
 
+@register_initializer("angle_preserving")
+def angle_preserving_init(
+    layer: nn.Linear,
+    n_samples: int = 500,
+    n_pairs: int = 2000,
+    lr: float = 0.01,
+    n_steps: int = 200,
+    norm_weight: float = 0.2,
+    pair_bins: int = 8,
+    eps: float = 1e-8,
+    **kwargs,
+) -> None:
+    """Angle-preserving initialization via cosine-based optimization.
+
+    This optimizer targets angle preservation more directly than
+    ``kernel_preserving_init`` by matching pairwise cosine similarities after
+    ReLU, with an objective that better reflects what happens in deep ReLU
+    stacks.
+
+    Differences vs ``kernel_preserving``:
+    1. Optimizes cosine similarity instead of raw inner products.
+    2. Uses target ``max(cos(x_i, x_j), 0)`` because ReLU outputs are
+       non-negative and cannot represent strongly negative cosine values well.
+    3. Reweights sampled pairs across cosine bins so near-orthogonal pairs
+       do not dominate the objective.
+    4. Uses a norm target of ``fan_out / fan_in`` for unit inputs, which
+       matches He-style scaling under ReLU.
+    5. Leaves ``layer.weight.requires_grad = True`` after initialization.
+
+    Args:
+        layer: Layer to initialize.
+        n_samples: Number of random unit vectors for the proxy objective.
+        n_pairs: Number of sampled vector pairs for angle matching.
+        lr: Learning rate for Adam.
+        n_steps: Number of optimizer steps.
+        norm_weight: Weight of the norm-preservation term.
+        pair_bins: Number of cosine bins used for pair reweighting.
+        eps: Small constant for numerical stability.
+    """
+    fan_in = layer.weight.shape[1]
+    fan_out = layer.weight.shape[0]
+    device = layer.weight.device
+    dtype = layer.weight.dtype
+    target_norm_sq = fan_out / fan_in
+
+    # He warm start.
+    nn.init.kaiming_normal_(layer.weight, a=0.0, mode="fan_in", nonlinearity="relu")
+
+    # Data-independent proxy: random directions on the unit sphere.
+    X = torch.randn(n_samples, fan_in, device=device, dtype=dtype)
+    X = X / X.norm(dim=1, keepdim=True).clamp(min=eps)
+
+    # Sample random pairs once; keep objective fixed during optimization.
+    idx_i = torch.randint(0, n_samples, (n_pairs,), device=device)
+    idx_j = torch.randint(0, n_samples, (n_pairs,), device=device)
+    same = idx_i == idx_j
+    if same.any():
+        idx_j[same] = (idx_j[same] + 1) % n_samples
+
+    input_cos = (X[idx_i] * X[idx_j]).sum(dim=1).clamp(-1.0, 1.0)
+    target_cos = input_cos.clamp(min=0.0)
+
+    # Reweight pairs so rare angle regions contribute comparably.
+    pair_bins = max(2, int(pair_bins))
+    bin_edges = torch.linspace(-1.0, 1.0, steps=pair_bins + 1, device=device, dtype=dtype)
+    bin_ids = torch.bucketize(input_cos.detach(), bin_edges[1:-1])
+    bin_counts = torch.bincount(bin_ids, minlength=pair_bins).clamp(min=1).to(dtype=dtype)
+    pair_weights = (1.0 / bin_counts[bin_ids]).to(dtype=dtype)
+    pair_weights = pair_weights / pair_weights.mean().clamp(min=eps)
+
+    layer.weight.requires_grad_(True)
+    optimizer = torch.optim.Adam([layer.weight], lr=lr)
+
+    for _ in range(n_steps):
+        optimizer.zero_grad()
+
+        out = torch.relu(X @ layer.weight.t())  # (n_samples, fan_out)
+        out_norm = out.norm(dim=1, keepdim=True).clamp(min=eps)
+        out_unit = out / out_norm
+
+        out_cos = (out_unit[idx_i] * out_unit[idx_j]).sum(dim=1).clamp(-1.0, 1.0)
+        angle_loss = (pair_weights * (out_cos - target_cos) ** 2).mean()
+
+        norms_sq = (out ** 2).sum(dim=1)
+        norm_loss = ((norms_sq / target_norm_sq - 1.0) ** 2).mean()
+
+        loss = angle_loss + norm_weight * norm_loss
+        loss.backward()
+        optimizer.step()
+
+    # Clear temporary optimizer gradient; keep weight trainable for later use.
+    layer.weight.grad = None
+
+    if layer.bias is not None:
+        nn.init.zeros_(layer.bias)
+
+
 @register_initializer("row_centered_final")
 def row_centered_final_init(layer: nn.Linear, **kwargs) -> None:
     """Row-centered initialization with Tuned Variance (Factor ~1.65).
@@ -461,10 +559,55 @@ def row_centered_final_init(layer: nn.Linear, **kwargs) -> None:
     with torch.no_grad():
         layer.weight.normal_(mean=0.0, std=target_std)
         layer.weight -= layer.weight.mean(dim=1, keepdim=True)
-        
+
         row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
         row_stds = torch.clamp(row_stds, min=1e-8)
         layer.weight *= target_std / row_stds
-        
+
+        if layer.bias is not None:
+            layer.bias.zero_()
+
+
+@register_initializer("row_centered_forward_balanced")
+def row_centered_forward_balanced_init(layer: nn.Linear, **kwargs) -> None:
+    """Row-centered with variance targeting forward gain = 1.0.
+
+    THIS IS A DIAGNOSTIC INITIALIZER — not intended as a solution.
+    Its purpose is to validate the forward-backward gain asymmetry theory.
+
+    Theory (from BP equations):
+        Row-centered W operates on centered activations:
+            z_j = Σ_k W_{jk}(a_k - ā)  since Σ_k W_{jk} = 0
+
+        Forward variance is proportional to Var(a), not E[a²]:
+            Var(z_j) ≈ Var(W) · d · Var(a)
+
+        For post-ReLU: Var(a)/E[a²] = (π-1)/π ≈ 0.682
+
+        To make forward gain = 1:
+            Var(W) = 2π / ((π-1) · d) ≈ 2.93/d
+
+    Expected behavior:
+        - Forward gain ≈ 1.0 (activations preserved)
+        - Backward gain ≈ 1.47 (error signals explode backward)
+        - This proves the asymmetry: no single variance fixes both directions
+
+    After confirming the asymmetry, use the alpha sweep (partial centering)
+    to find a structural solution.
+    """
+    fan_in = layer.weight.shape[1]
+
+    # Var(W) = 2π / ((π-1) · d) ≈ 2.934 / d
+    factor = 2.0 * math.pi / (math.pi - 1.0)
+    target_std = math.sqrt(factor / fan_in)
+
+    with torch.no_grad():
+        layer.weight.normal_(mean=0.0, std=target_std)
+        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
+
+        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
+        row_stds = torch.clamp(row_stds, min=1e-8)
+        layer.weight *= target_std / row_stds
+
         if layer.bias is not None:
             layer.bias.zero_()

@@ -70,29 +70,42 @@ class FeedForward(nn.Module):
         self,
         x: torch.Tensor,
         return_activations: bool = False,
+        return_preactivations: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         """Forward pass through the network.
 
         Args:
             x: Input tensor of shape (batch_size, input_dim).
-            return_activations: If True, also return intermediate activations.
+            return_activations: If True, also return intermediate activations
+                (post-ReLU for hidden layers, linear output for final layer).
+            return_preactivations: If True, also return pre-activation values
+                z^l = W^l * a^{l-1} + b^l (before ReLU). Only collected for
+                hidden layers (not the final linear output).
 
         Returns:
-            If return_activations is False: Output tensor.
-            If return_activations is True: Tuple of (output, activations) where
-                activations is a list of tensors after each layer (including ReLU).
+            If neither flag is True: Output tensor.
+            If return_activations only: Tuple of (output, activations).
+            If return_preactivations only: Tuple of (output, preactivations).
+            If both: Tuple of (output, activations, preactivations).
         """
         activations = []
+        preactivations = []
 
         for i, layer in enumerate(self.layers):
             x = layer(x)
-            if i < len(self.layers) - 1:  # Apply ReLU to all but last layer
+            if i < len(self.layers) - 1:  # Hidden layers
+                if return_preactivations:
+                    preactivations.append(x)  # z^l before ReLU
                 x = F.relu(x)
             if return_activations:
-                activations.append(x)
+                activations.append(x)  # a^l after ReLU (or linear output for last)
 
+        if return_activations and return_preactivations:
+            return x, activations, preactivations
         if return_activations:
             return x, activations
+        if return_preactivations:
+            return x, preactivations
         return x
 
     @property

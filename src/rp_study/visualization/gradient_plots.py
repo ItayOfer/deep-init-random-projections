@@ -9,7 +9,9 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ..experiments.gradient_analysis import ExperimentResults, LayerGradientStats, ActivationStats
+from ..experiments.gradient_analysis import (
+    ExperimentResults, LayerGradientStats, ActivationStats, LayerSignalStats,
+)
 
 
 # Default color for highlighting zeros
@@ -482,3 +484,317 @@ def _plot_histogram_with_zeros(
 
     if title:
         ax.set_title(title, fontsize=10)
+
+
+# =============================================================================
+# Signal statistics & gain decomposition plots
+# =============================================================================
+
+
+def plot_gain_decomposition(
+    result: ExperimentResults,
+    exclude_last_hidden: bool = True,
+    figsize: Tuple[float, float] = (14, 5),
+) -> plt.Figure:
+    """Plot forward and backward gain per layer side by side.
+
+    The forward gain measures rms(a^l) / rms(a^{l-1}) — how much the
+    per-neuron signal level changes through each layer.
+
+    The backward gain measures rms(δ^l) / rms(δ^{l+1}) — how much the
+    error signal changes when propagating backward.
+
+    For stable training, both should be close to 1.0.
+
+    Args:
+        result: ExperimentResults with signal_stats populated.
+        exclude_last_hidden: If True, exclude the last hidden layer
+            (its backward gain involves the output dimension change).
+        figsize: Figure size.
+    """
+    stats = result.signal_stats
+    if not stats:
+        raise ValueError("No signal_stats in results. Run experiment with updated code.")
+
+    if exclude_last_hidden and len(stats) > 1:
+        stats = stats[:-1]
+
+    layers = [f"L{s.layer_idx}" for s in stats]
+    fwd_gains = [s.forward_gain for s in stats]
+    bwd_gains = [s.backward_gain for s in stats]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    # Forward gain
+    ax1.plot(layers, fwd_gains, "o-", color="tab:blue", markersize=4, linewidth=1.5)
+    ax1.axhline(y=1.0, color="gray", linestyle="--", alpha=0.7, label="gain = 1.0")
+    ax1.set_xlabel("Layer")
+    ax1.set_ylabel("Forward Gain")
+    ax1.set_title("Forward Gain: rms(a^l) / rms(a^{l-1})")
+    ax1.legend(fontsize=8)
+    ax1.grid(True, alpha=0.3)
+    ax1.tick_params(axis="x", rotation=45)
+    _thin_xticks(ax1, layers)
+
+    # Backward gain
+    ax2.plot(layers, bwd_gains, "s-", color="tab:red", markersize=4, linewidth=1.5)
+    ax2.axhline(y=1.0, color="gray", linestyle="--", alpha=0.7, label="gain = 1.0")
+    ax2.set_xlabel("Layer")
+    ax2.set_ylabel("Backward Gain")
+    ax2.set_title("Backward Gain: rms(δ^l) / rms(δ^{l+1})")
+    ax2.legend(fontsize=8)
+    ax2.grid(True, alpha=0.3)
+    ax2.tick_params(axis="x", rotation=45)
+    _thin_xticks(ax2, layers)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_signal_norms(
+    result: ExperimentResults,
+    exclude_last_hidden: bool = True,
+    use_log_scale: bool = True,
+    figsize: Tuple[float, float] = (16, 4),
+) -> plt.Figure:
+    """Plot activation RMS, error signal RMS, and gradient row norms per layer.
+
+    This three-panel decomposition shows:
+    - Left: rms(a^l) — how the forward signal evolves with depth
+    - Center: rms(δ^l) — how the backward error signal evolves
+    - Right: mean ||∂C/∂W^l|| row norm — the product (what we optimize)
+
+    Since ∂C/∂W^l = δ^l · (a^{l-1})^T, the gradient norm is proportional
+    to ||δ^l|| · ||a^{l-1}||. These panels show which component dominates.
+
+    Args:
+        result: ExperimentResults with signal_stats populated.
+        exclude_last_hidden: Exclude last hidden layer from signal plots.
+        use_log_scale: Use log y-axis.
+        figsize: Figure size.
+    """
+    stats = result.signal_stats
+    if not stats:
+        raise ValueError("No signal_stats in results.")
+
+    if exclude_last_hidden and len(stats) > 1:
+        stats_trimmed = stats[:-1]
+    else:
+        stats_trimmed = stats
+
+    layers_sig = [f"L{s.layer_idx}" for s in stats_trimmed]
+    act_rms = [s.activation_rms for s in stats_trimmed]
+    err_rms = [s.error_signal_rms for s in stats_trimmed]
+
+    # Gradient row norms (from grad_stats, excluding output layer)
+    grad_stats = result.grad_stats
+    grad_layers = list(grad_stats.keys())
+    if exclude_last_hidden and len(grad_layers) > 1:
+        grad_layers = grad_layers[:-1]
+    grad_norms = [grad_stats[k].mean_row_norm for k in grad_layers]
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=figsize)
+
+    # Activation RMS
+    ax1.plot(layers_sig, act_rms, "o-", color="tab:blue", markersize=4)
+    ax1.set_xlabel("Layer")
+    ax1.set_ylabel("rms(a^l)")
+    ax1.set_title("Activation RMS (forward signal)")
+    ax1.grid(True, alpha=0.3)
+    ax1.tick_params(axis="x", rotation=45)
+    _thin_xticks(ax1, layers_sig)
+
+    # Error signal RMS
+    ax2.plot(layers_sig, err_rms, "s-", color="tab:red", markersize=4)
+    ax2.set_xlabel("Layer")
+    ax2.set_ylabel("rms(δ^l)")
+    ax2.set_title("Error Signal RMS (backward signal)")
+    ax2.grid(True, alpha=0.3)
+    ax2.tick_params(axis="x", rotation=45)
+    _thin_xticks(ax2, layers_sig)
+
+    # Gradient row norms
+    ax3.plot(grad_layers, grad_norms, "^-", color="tab:green", markersize=4)
+    ax3.set_xlabel("Layer")
+    ax3.set_ylabel("Mean Row Norm")
+    ax3.set_title("Gradient Row Norms (∝ ||δ^l|| · ||a^{l-1}||)")
+    ax3.grid(True, alpha=0.3)
+    ax3.tick_params(axis="x", rotation=45)
+    _thin_xticks(ax3, grad_layers)
+
+    if use_log_scale:
+        ax1.set_yscale("log")
+        ax2.set_yscale("log")
+        ax3.set_yscale("log")
+
+    plt.tight_layout()
+    return fig
+
+
+def compare_gains_plot(
+    results_dict: Dict[str, ExperimentResults],
+    gain_type: str = "forward",
+    exclude_last_hidden: bool = True,
+    figsize: Tuple[float, float] = (12, 5),
+) -> plt.Figure:
+    """Compare forward or backward gains across initializations.
+
+    Args:
+        results_dict: Dict mapping init name to ExperimentResults.
+        gain_type: "forward" or "backward".
+        exclude_last_hidden: Exclude last hidden layer.
+        figsize: Figure size.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    all_layers = None
+
+    for idx, (name, result) in enumerate(results_dict.items()):
+        stats = result.signal_stats
+        if not stats:
+            continue
+        if exclude_last_hidden and len(stats) > 1:
+            stats = stats[:-1]
+
+        layers = [f"L{s.layer_idx}" for s in stats]
+        if all_layers is None:
+            all_layers = layers
+
+        if gain_type == "forward":
+            values = [s.forward_gain for s in stats]
+            ylabel = "Forward Gain: rms(a^l) / rms(a^{l-1})"
+        elif gain_type == "backward":
+            values = [s.backward_gain for s in stats]
+            ylabel = "Backward Gain: rms(δ^l) / rms(δ^{l+1})"
+        else:
+            raise ValueError(f"Unknown gain_type: {gain_type}")
+
+        marker = _MARKERS[idx % len(_MARKERS)]
+        ax.plot(layers, values, marker=marker, linestyle="-", markersize=4,
+                label=name, linewidth=1.5)
+
+    ax.axhline(y=1.0, color="gray", linestyle="--", alpha=0.7)
+    ax.set_xlabel("Layer")
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{gain_type.capitalize()} Gain Comparison")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    ax.tick_params(axis="x", rotation=45)
+    if all_layers is not None:
+        _thin_xticks(ax, all_layers)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_relu_survival(
+    results_dict: Dict[str, ExperimentResults],
+    exclude_last_hidden: bool = True,
+    figsize: Tuple[float, float] = (12, 5),
+) -> plt.Figure:
+    """Plot ReLU survival rate per layer for multiple initializations.
+
+    The survival rate is the fraction of pre-activation entries z^l > 0.
+    For standard He initialization, this should be ~50%.
+
+    Args:
+        results_dict: Dict mapping init name to ExperimentResults.
+        exclude_last_hidden: Exclude last hidden layer.
+        figsize: Figure size.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    all_layers = None
+
+    for idx, (name, result) in enumerate(results_dict.items()):
+        stats = result.signal_stats
+        if not stats:
+            continue
+        if exclude_last_hidden and len(stats) > 1:
+            stats = stats[:-1]
+
+        layers = [f"L{s.layer_idx}" for s in stats]
+        if all_layers is None:
+            all_layers = layers
+        survival = [s.relu_survival_rate for s in stats]
+
+        marker = _MARKERS[idx % len(_MARKERS)]
+        ax.plot(layers, survival, marker=marker, linestyle="-", markersize=4,
+                label=name, linewidth=1.5)
+
+    ax.axhline(y=0.5, color="gray", linestyle="--", alpha=0.7, label="50%")
+    ax.set_xlabel("Layer")
+    ax.set_ylabel("ReLU Survival Rate")
+    ax.set_title("Fraction of z^l > 0 per Layer")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(0, 1)
+    ax.tick_params(axis="x", rotation=45)
+    if all_layers is not None:
+        _thin_xticks(ax, all_layers)
+
+    plt.tight_layout()
+    return fig
+
+
+def plot_centering_ratio(
+    results_dict: Dict[str, ExperimentResults],
+    exclude_last_hidden: bool = True,
+    figsize: Tuple[float, float] = (12, 5),
+) -> plt.Figure:
+    """Plot centering ratio Var(a)/E[a²] per layer for each initializer.
+
+    This ratio measures the forward gain reduction caused by row-centering.
+    When weights have zero-sum rows, the effective input to each neuron is
+    (a_k - mean(a)), so the forward gain is proportional to Var(a)/E[a²]
+    instead of E[a²]/E[a²] = 1.
+
+    For post-ReLU activations (half-Gaussian): ratio ≈ (π-1)/π ≈ 0.68.
+    For symmetric distributions (zero mean): ratio ≈ 1.0.
+
+    The centering ratio is a property of the ACTIVATIONS, not the weights.
+    It is the same for all initializers at the same layer. What differs
+    between initializers is whether this ratio affects the forward gain
+    (it does for row-centered weights, but not for standard He).
+
+    Args:
+        results_dict: Dict mapping init name to ExperimentResults.
+        exclude_last_hidden: Exclude last hidden layer.
+        figsize: Figure size.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    all_layers = None
+
+    for idx, (name, result) in enumerate(results_dict.items()):
+        stats = result.signal_stats
+        if not stats:
+            continue
+        if exclude_last_hidden and len(stats) > 1:
+            stats = stats[:-1]
+
+        layers = [f"L{s.layer_idx}" for s in stats]
+        if all_layers is None:
+            all_layers = layers
+        ratios = [s.centering_ratio for s in stats]
+
+        marker = _MARKERS[idx % len(_MARKERS)]
+        ax.plot(layers, ratios, marker=marker, linestyle="-", markersize=4,
+                label=name, linewidth=1.5)
+
+    # Theoretical value for half-Gaussian
+    import math
+    theoretical = (math.pi - 1) / math.pi
+    ax.axhline(y=theoretical, color="gray", linestyle="--", alpha=0.7,
+               label=f"(π-1)/π ≈ {theoretical:.3f}")
+    ax.axhline(y=1.0, color="black", linestyle=":", alpha=0.5, label="1.0 (no reduction)")
+
+    ax.set_xlabel("Layer")
+    ax.set_ylabel("Var(a) / E[a²]")
+    ax.set_title("Centering Ratio per Layer (forward gain reduction factor)")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(0, 1.1)
+    ax.tick_params(axis="x", rotation=45)
+    if all_layers is not None:
+        _thin_xticks(ax, all_layers)
+
+    plt.tight_layout()
+    return fig

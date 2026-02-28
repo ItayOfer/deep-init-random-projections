@@ -213,6 +213,7 @@ def multi_layer_rp_with_init(
     init_strategy: str = "he",
     width: Optional[int] = None,
     seed: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
     **init_kwargs,
 ) -> np.ndarray:
     """Apply multi-layer RP + ReLU using registry initializers.
@@ -228,6 +229,7 @@ def multi_layer_rp_with_init(
             "row_centered_he", "orthogonal_he").
         width: Width of each hidden layer. Defaults to d_in (square projections).
         seed: Optional random seed for reproducibility.
+        device: Torch device ("cuda", "cpu", or None for auto-detect).
         **init_kwargs: Extra kwargs passed to the initializer (e.g., alpha=0.5).
 
     Returns:
@@ -240,21 +242,32 @@ def multi_layer_rp_with_init(
     if seed is not None:
         torch.manual_seed(seed)
         np.random.seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(seed)
+
+    # Resolve device
+    if device is None:
+        dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        dev = torch.device(device)
 
     d_in = X.shape[1]
     w = width or d_in
 
-    X_tensor = torch.from_numpy(X).float()
+    X_tensor = torch.from_numpy(X).float().to(dev)
 
-    with torch.no_grad():
-        current_dim = d_in
-        for _ in range(n_layers):
-            layer = nn.Linear(current_dim, w, bias=False)
-            initialize_layer(layer, strategy=init_strategy, **init_kwargs)
+    current_dim = d_in
+    for _ in range(n_layers):
+        layer = nn.Linear(current_dim, w, bias=False).to(dev)
+        # Initialize outside no_grad: some initializers (e.g., kernel_preserving)
+        # run an internal optimization loop that requires gradients.
+        initialize_layer(layer, strategy=init_strategy, **init_kwargs)
+        # Forward pass doesn't need gradients
+        with torch.no_grad():
             X_tensor = torch.relu(X_tensor @ layer.weight.t())
-            current_dim = w
+        current_dim = w
 
-    return X_tensor.numpy()
+    return X_tensor.cpu().numpy()
 
 
 def jl_projection(

@@ -1,0 +1,9 @@
+# requirements.txt for DLC (Deep Learning Cluster) container modification
+# ------------------------------------------------------------------
+# torch and torchvision are EXCLUDED because they come pre-installed
+# in the NGC PyTorch container. Adding them here would override the
+# container's CUDA-optimized builds.
+# ------------------------------------------------------------------
+numpy>=1.20.0
+matplotlib>=3.4.0
+scikit-learn>=0.24.0
