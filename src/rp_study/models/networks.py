@@ -61,9 +61,16 @@ class FeedForward(nn.Module):
 
         # Build layers
         self.layers = nn.ModuleList()
-        for fan_in, fan_out in zip(layer_sizes[:-1], layer_sizes[1:]):
+        n_weight_layers = len(layer_sizes) - 1
+        for i, (fan_in, fan_out) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
             layer = nn.Linear(fan_in, fan_out, bias=use_bias)
-            initialize_layer(layer, strategy=init_strategy, **init_kwargs)
+            initialize_layer(
+                layer,
+                strategy=init_strategy,
+                layer_index=i,
+                n_layers=n_weight_layers,
+                **init_kwargs,
+            )
             self.layers.append(layer)
 
     def forward(

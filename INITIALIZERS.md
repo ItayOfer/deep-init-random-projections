@@ -189,6 +189,44 @@ Warm-started from He initialization. Optimized with Adam (lr=0.01, 200 steps).
 - May become numerically unstable at 20+ layers (each layer optimized independently, doesn't account for cumulative drift)
 - Data-independent: optimizes over random unit vectors, not actual data
 
+### 14. `row_centered_forward_balanced` -- Forward-Balanced Row Centering (Diagnostic)
+
+**Formula:**
+```
+Var(W) = 2π / ((π-1) · d) ≈ 2.934/d
+W_i = W_i - mean(W_i)                           (center)
+W_i = W_i * target_std / std(W_i)               (rescale)
+```
+
+**Motivation:** Diagnostic initializer to validate the forward-backward gain asymmetry theory. Sets variance so that the forward gain (which sees Var(a) not E[a²]) equals 1.0. This INTENTIONALLY creates backward gain ≈ 1.47, proving no single variance fixes both directions.
+
+### 15. `row_centered_layer_balanced` -- Layer-Balanced Row Centering
+
+**Formula:**
+```
+r = √((π-1)/π) ≈ 0.826    (structural forward gain from row centering)
+s_l = r^{η·(l - (L+1)/2)}  (per-layer scaling, centered at middle layer)
+base_std = √(2/d) · √(π/(π-1))  (variance-adjusted He base)
+target_std_l = base_std · s_l
+
+W ~ N(0, target_std_l)
+W_i = W_i - mean(W_i)                             (center)
+W_i = W_i * target_std_l / std(W_i)               (rescale)
+```
+
+**Motivation:** From BP4, ||∂C/∂W^l|| ∝ ||a^{l-1}|| · ||δ^l||. With row centering, forward gain is structurally r ≈ 0.826 per layer. The standard var_adj approach compensates the average gain but creates gradient non-uniformity: early layers get much larger gradients (ratio ~21× at 20 layers). The layer-balanced approach uses knowledge of L (network depth) to distribute variance across layers, trading some forward stability for gradient uniformity.
+
+**Parameters:**
+- `layer_index`: 0-based layer position (passed automatically by FeedForward/bridge)
+- `n_layers`: total number of weight layers (passed automatically)
+- `eta`: correction strength (0 = var_adj, 1 = full balance). Default 1.0.
+
+**Properties:**
+- Full row centering → geometry identical to `row_centered_he_var_adj`
+- Gradient CV reduced from 1.206 (var_adj) to 0.536 (eta=0.5) at 20 layers
+- Gradient max/min ratio reduced from 21× to 5× (eta=0.5)
+- eta=0.5 is the recommended default (good gradient uniformity with manageable activation range)
+
 ---
 
 ## Utility Initializer
@@ -217,3 +255,5 @@ W_ij ~ N(mean, sqrt(variance))
 | `orthogonal_tuned` | No | N/A (tuned 1.65) | No | Stable orthogonal |
 | `centered_with_dc_he` | Nearly | Yes | Partially | Breaking the trap |
 | `kernel_preserving` | No | Optimized | No | Best geometry (shallow) |
+| `row_centered_forward_balanced` | Yes | Yes (2.934/d) | Yes | Diagnostic only |
+| `row_centered_layer_balanced` | Yes | Yes (per-layer) | Yes | Geometry + gradient balance |

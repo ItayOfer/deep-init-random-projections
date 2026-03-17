@@ -568,6 +568,83 @@ def row_centered_final_init(layer: nn.Linear, **kwargs) -> None:
             layer.bias.zero_()
 
 
+@register_initializer("row_centered_layer_balanced")
+def row_centered_layer_balanced_init(
+    layer: nn.Linear,
+    layer_index: int = 0,
+    n_layers: int = 1,
+    eta: float = 1.0,
+    **kwargs,
+) -> None:
+    """Row-centered He with per-layer variance scaling for gradient uniformity.
+
+    Mathematical derivation:
+        From BP4: ||∂C/∂W^l|| ∝ ||a^{l-1}|| · ||δ^l||
+
+        With row centering, the forward gain per layer is:
+            g_f = √((π-1)/π) ≈ 0.826  (structural, from centering)
+
+        With per-layer std s_l, after l-1 forward layers:
+            ||a^{l-1}|| ∝ ∏_{k=1}^{l-1} (s_k · g_f)
+
+        And backward from layer L to l:
+            ||δ^l|| ∝ ∏_{k=l+1}^{L} s_k   (backward gain ≈ 1 per layer)
+
+        Gradient norm at layer l:
+            ||∇W^l|| ∝ g_f^{l-1} · ∏_{k≠l} s_k
+
+        For uniform gradients across layers, we need:
+            g_f^{l-1} · s_l^{-1} = const  ⟹  s_l ∝ g_f^{l-1}
+
+        Centering at middle layer (l = (L+1)/2):
+            s_l = r^{η·(l - (L+1)/2)}
+
+        where r = √((π-1)/π) ≈ 0.826.
+
+    Effect:
+        - Early layers (l < L/2): s_l > 1, boosted variance compensates
+          future forward decay
+        - Late layers (l > L/2): s_l < 1, reduced variance prevents
+          backward explosion
+        - All layers keep full row centering → geometry preserved
+
+    Args:
+        layer: nn.Linear layer to initialize.
+        layer_index: 0-based index of this layer in the network.
+        n_layers: Total number of layers in the network.
+        eta: Correction strength. 0 = standard row-centered He (var_adj),
+             1 = full gradient balance. Default 1.0.
+    """
+    fan_in = layer.weight.shape[1]
+
+    # Per-layer scaling factor
+    r = math.sqrt((math.pi - 1.0) / math.pi)  # ≈ 0.826
+    l = layer_index + 1  # 1-indexed layer number
+    L = n_layers
+    s_l = r ** (eta * (l - (L + 1) / 2))
+
+    # Base std: variance-adjusted He (compensates average forward gain loss)
+    # This ensures the geometric mean of forward gains ≈ 1
+    var_adj_factor = math.sqrt(math.pi / (math.pi - 1.0))  # ≈ 1.211
+    base_std = math.sqrt(2.0 / fan_in) * var_adj_factor
+    target_std = base_std * s_l
+
+    with torch.no_grad():
+        # Sample Gaussian weights
+        layer.weight.normal_(mean=0.0, std=target_std)
+
+        # Row centering: each row sums to zero
+        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
+
+        # Renormalize rows to target_std (centering changes row norms)
+        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
+        row_stds = torch.clamp(row_stds, min=1e-8)
+        layer.weight *= target_std / row_stds
+
+        if layer.bias is not None:
+            layer.bias.zero_()
+
+
 @register_initializer("row_centered_forward_balanced")
 def row_centered_forward_balanced_init(layer: nn.Linear, **kwargs) -> None:
     """Row-centered with variance targeting forward gain = 1.0.

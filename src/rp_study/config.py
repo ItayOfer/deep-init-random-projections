@@ -41,6 +41,7 @@ class NetworkConfig:
     weight_variance: Optional[float] = None  # For custom_variance init
     weight_mean: float = 0.0  # For custom_variance init
     use_bias: bool = True
+    init_kwargs: dict = field(default_factory=dict)  # Extra kwargs for initializer (e.g., eta)
 
     def __post_init__(self):
         if len(self.layer_sizes) < 2:

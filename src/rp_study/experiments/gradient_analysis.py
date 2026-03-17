@@ -226,6 +226,7 @@ class GradientExperiment:
             init_strategy=network_config.init_strategy,
             variance=network_config.weight_variance,
             mean=network_config.weight_mean,
+            **network_config.init_kwargs,
         ).to(self.device)
 
     def run(self) -> ExperimentResults:

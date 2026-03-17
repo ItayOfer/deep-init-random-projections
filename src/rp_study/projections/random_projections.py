@@ -214,6 +214,7 @@ def multi_layer_rp_with_init(
     width: Optional[int] = None,
     seed: Optional[int] = None,
     device: Optional[Union[str, torch.device]] = None,
+    use_bias: bool = False,
     **init_kwargs,
 ) -> np.ndarray:
     """Apply multi-layer RP + ReLU using registry initializers.
@@ -230,6 +231,9 @@ def multi_layer_rp_with_init(
         width: Width of each hidden layer. Defaults to d_in (square projections).
         seed: Optional random seed for reproducibility.
         device: Torch device ("cuda", "cpu", or None for auto-detect).
+        use_bias: Whether to create layers with bias. When True, the
+            initializer is responsible for setting the bias values.
+            Required for negative-bias initializers.
         **init_kwargs: Extra kwargs passed to the initializer (e.g., alpha=0.5).
 
     Returns:
@@ -257,14 +261,23 @@ def multi_layer_rp_with_init(
     X_tensor = torch.from_numpy(X).float().to(dev)
 
     current_dim = d_in
-    for _ in range(n_layers):
-        layer = nn.Linear(current_dim, w, bias=False).to(dev)
+    for i in range(n_layers):
+        layer = nn.Linear(current_dim, w, bias=use_bias).to(dev)
         # Initialize outside no_grad: some initializers (e.g., kernel_preserving)
         # run an internal optimization loop that requires gradients.
-        initialize_layer(layer, strategy=init_strategy, **init_kwargs)
+        initialize_layer(
+            layer,
+            strategy=init_strategy,
+            layer_index=i,
+            n_layers=n_layers,
+            **init_kwargs,
+        )
         # Forward pass doesn't need gradients
         with torch.no_grad():
-            X_tensor = torch.relu(X_tensor @ layer.weight.t())
+            if use_bias:
+                X_tensor = torch.relu(X_tensor @ layer.weight.t() + layer.bias)
+            else:
+                X_tensor = torch.relu(X_tensor @ layer.weight.t())
         current_dim = w
 
     return X_tensor.cpu().numpy()
