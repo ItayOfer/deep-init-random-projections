@@ -53,8 +53,64 @@ class GradientExperimentConfig:
     """Configuration for gradient analysis experiments."""
 
     num_samples: int = 1000
-    dataset: Literal["mnist", "fashion_mnist"] = "fashion_mnist"
+    dataset: Literal["mnist", "fashion_mnist", "cifar10"] = "fashion_mnist"
     num_bins: int = 50  # For histogram plotting
+
+
+@dataclass
+class ClassifierConfig:
+    """Configuration for supervised classifier architecture and initialization."""
+
+    architecture: Literal["fc", "cnn"] = "fc"
+    depth: int = 50
+    init_strategy: str = "he"
+    init_kwargs: dict = field(default_factory=dict)
+    use_batch_norm: bool = False
+    use_bias: bool = True
+    num_classes: int = 10
+    fc_input_dim: int = 784
+    fc_hidden_dim: int = 512
+    cnn_input_channels: int = 1
+    cnn_base_channels: int = 32
+    cnn_max_channels: int = 256
+
+
+@dataclass
+class TrainingConfig:
+    """Configuration for supervised training experiments."""
+
+    dataset: Literal["mnist", "fashion_mnist", "cifar10"] = "fashion_mnist"
+    epochs: int = 5
+    batch_size: int = 128
+    eval_batch_size: int = 256
+    learning_rate: float = 1e-3
+    weight_decay: float = 0.0
+    optimizer: Literal["adam", "sgd"] = "adam"
+    momentum: float = 0.9
+    scheduler: Literal["none", "cosine", "step"] = "none"
+    step_size: int = 10
+    gamma: float = 0.1
+    num_train_samples: Optional[int] = None
+    num_test_samples: Optional[int] = None
+    normalize_inputs: bool = True
+    num_workers: int = 0
+    label_smoothing: float = 0.0
+
+
+@dataclass
+class GeometryBenchmarkConfig:
+    """Configuration for dataset-based geometry benchmarking."""
+
+    dataset: Literal["mnist", "fashion_mnist", "cifar10"] = "fashion_mnist"
+    num_samples: int = 2000
+    depths: List[int] = field(default_factory=lambda: [5, 10, 15, 20])
+    init_strategies: List[str] = field(
+        default_factory=lambda: ["he", "orthogonal_he", "row_centered_he_var_adj"]
+    )
+    knn_k: int = 5
+    n_pairs: int = 2000
+    flatten: bool = True
+    normalize_inputs: bool = False
 
 
 @dataclass

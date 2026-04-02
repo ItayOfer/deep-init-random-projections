@@ -227,6 +227,27 @@ W_i = W_i * target_std_l / std(W_i)               (rescale)
 - Gradient max/min ratio reduced from 21× to 5× (eta=0.5)
 - eta=0.5 is the recommended default (good gradient uniformity with manageable activation range)
 
+### 16. `row_centered_layer_balanced_he_base` -- Backward-Aware Layer-Balanced Row Centering
+
+**Formula:**
+```
+r = √((π-1)/π) ≈ 0.826
+s_l = r^{η·(l - (L+1)/2)}
+base_std = √(2/d)                      # standard He base
+target_std_l = base_std · s_l
+
+W ~ N(0, target_std_l)
+W_i = W_i - mean(W_i)
+W_i = W_i * target_std_l / std(W_i)
+```
+
+**Motivation:** This implements the "backward-aware base" direction from the meeting notes. Unlike `row_centered_layer_balanced`, it does **not** start from the variance-adjusted row-centered base, so it avoids baking in backward gain > 1. The trade-off is that the average forward gain remains below 1, but the per-layer scaling can still improve gradient uniformity while keeping the backward chain closer to He behavior.
+
+**Properties:**
+- Full row centering, so it preserves the same structural constraint as the other row-centered variants
+- Uses standard He base variance for better backward stability
+- Designed to test whether a depth-aware schedule can help without the var-adj backward inflation
+
 ---
 
 ## Utility Initializer
@@ -257,3 +278,4 @@ W_ij ~ N(mean, sqrt(variance))
 | `kernel_preserving` | No | Optimized | No | Best geometry (shallow) |
 | `row_centered_forward_balanced` | Yes | Yes (2.934/d) | Yes | Diagnostic only |
 | `row_centered_layer_balanced` | Yes | Yes (per-layer) | Yes | Geometry + gradient balance |
+| `row_centered_layer_balanced_he_base` | Yes | Yes (He base + per-layer) | Yes | Backward-aware row-centered test |

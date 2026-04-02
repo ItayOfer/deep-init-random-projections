@@ -28,6 +28,39 @@ import torch.nn as nn
 INITIALIZERS: Dict[str, Callable] = {}
 
 
+def _fan_in(layer: nn.Module) -> int:
+    """Return fan_in for Linear/Conv2d layers."""
+    if not hasattr(layer, "weight"):
+        raise TypeError(f"Layer of type {type(layer).__name__} has no weight tensor")
+    return int(layer.weight[0].numel())
+
+
+def _weight_rows_view(layer: nn.Module) -> torch.Tensor:
+    """Flatten each output unit/filter into one row."""
+    if not hasattr(layer, "weight"):
+        raise TypeError(f"Layer of type {type(layer).__name__} has no weight tensor")
+    return layer.weight.view(layer.weight.shape[0], -1)
+
+
+def _zero_bias(layer: nn.Module) -> None:
+    """Zero a layer bias when present."""
+    if getattr(layer, "bias", None) is not None:
+        nn.init.zeros_(layer.bias)
+
+
+def _row_center_(layer: nn.Module, alpha: float = 1.0) -> None:
+    """Center each output row/filter by subtracting its mean."""
+    rows = _weight_rows_view(layer)
+    rows -= alpha * rows.mean(dim=1, keepdim=True)
+
+
+def _match_row_std_(layer: nn.Module, target_std: float) -> None:
+    """Rescale each output row/filter to the target standard deviation."""
+    rows = _weight_rows_view(layer)
+    row_stds = rows.std(dim=1, keepdim=True, unbiased=False).clamp(min=1e-8)
+    rows *= target_std / row_stds
+
+
 def register_initializer(name: str):
     """Decorator to register a new initialization strategy.
 
@@ -79,7 +112,7 @@ def list_initializers() -> list:
 
 
 @register_initializer("he")
-def he_init(layer: nn.Linear, **kwargs) -> None:
+def he_init(layer: nn.Module, **kwargs) -> None:
     """He (Kaiming) initialization for ReLU networks.
 
     Uses fan_in mode: Var(W) = 2/fan_in
@@ -88,12 +121,11 @@ def he_init(layer: nn.Linear, **kwargs) -> None:
     "Delving Deep into Rectifiers" (He et al., 2015)
     """
     nn.init.kaiming_normal_(layer.weight, a=0.0, mode="fan_in", nonlinearity="relu")
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
+    _zero_bias(layer)
 
 
 @register_initializer("row_centered_he")
-def row_centered_he_init(layer: nn.Linear, **kwargs) -> None:
+def row_centered_he_init(layer: nn.Module, **kwargs) -> None:
     """Row-centered He initialization.
 
     Draws from N(0, 2/fan_in) then subtracts the mean of each row,
@@ -105,19 +137,17 @@ def row_centered_he_init(layer: nn.Linear, **kwargs) -> None:
     cause gradient vanishing in deep networks. See row_centered_he_var_adj
     for a variance-adjusted version.
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
     std = math.sqrt(2.0 / fan_in)
 
     with torch.no_grad():
         layer.weight.normal_(mean=0.0, std=std)
-        # Subtract row mean to center each row
-        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
-        if layer.bias is not None:
-            layer.bias.zero_()
+        _row_center_(layer)
+        _zero_bias(layer)
 
 
 @register_initializer("row_centered_he_var_adj")
-def row_centered_he_var_adj_init(layer: nn.Linear, **kwargs) -> None:
+def row_centered_he_var_adj_init(layer: nn.Module, **kwargs) -> None:
     """Row-centered He initialization with variance adjustment.
 
     This initialization combines the geometric benefits of row-centering
@@ -139,30 +169,20 @@ def row_centered_he_var_adj_init(layer: nn.Linear, **kwargs) -> None:
     - Each row sums to zero (geometric collapse prevention)
     - Each row has the correct He variance (healthy gradient flow)
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
     target_std = math.sqrt(2.0 / fan_in)
 
     with torch.no_grad():
         # Step 1: Sample from He distribution
         layer.weight.normal_(mean=0.0, std=target_std)
 
-        # Step 2: Center each row (subtract row mean)
-        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
-
-        # Step 3: Rescale each row to restore He variance
-        # Compute std of each row and rescale to target_std
-        # Use unbiased=False to match numpy's default (population std)
-        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
-        # Avoid division by zero for edge cases
-        row_stds = torch.clamp(row_stds, min=1e-8)
-        layer.weight *= target_std / row_stds
-
-        if layer.bias is not None:
-            layer.bias.zero_()
+        _row_center_(layer)
+        _match_row_std_(layer, target_std)
+        _zero_bias(layer)
 
 
 @register_initializer("partial_centered_he")
-def partial_centered_he_init(layer: nn.Linear, alpha: float = 0.5, **kwargs) -> None:
+def partial_centered_he_init(layer: nn.Module, alpha: float = 0.5, **kwargs) -> None:
     """Partial row-centered He initialization.
 
     Instead of forcing rows to sum to exactly zero (which creates a hard
@@ -182,26 +202,19 @@ def partial_centered_he_init(layer: nn.Linear, alpha: float = 0.5, **kwargs) -> 
     This allows tuning the trade-off between geometric collapse prevention
     (higher alpha) and gradient flow (lower alpha).
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
     target_std = math.sqrt(2.0 / fan_in)
 
     with torch.no_grad():
         layer.weight.normal_(mean=0.0, std=target_std)
 
-        # Partial centering
-        layer.weight -= alpha * layer.weight.mean(dim=1, keepdim=True)
-
-        # Rescale to restore He variance
-        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
-        row_stds = torch.clamp(row_stds, min=1e-8)
-        layer.weight *= target_std / row_stds
-
-        if layer.bias is not None:
-            layer.bias.zero_()
+        _row_center_(layer, alpha=alpha)
+        _match_row_std_(layer, target_std)
+        _zero_bias(layer)
 
 
 @register_initializer("orthogonal_he")
-def orthogonal_he_init(layer: nn.Linear, **kwargs) -> None:
+def orthogonal_he_init(layer: nn.Module, **kwargs) -> None:
     """Orthogonal initialization with He-like scaling.
 
     Uses QR decomposition to create orthogonal rows (for square matrices)
@@ -220,12 +233,11 @@ def orthogonal_he_init(layer: nn.Linear, **kwargs) -> None:
     """
     # Use PyTorch's orthogonal init with gain=sqrt(2) for ReLU
     nn.init.orthogonal_(layer.weight, gain=math.sqrt(2.0))
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
+    _zero_bias(layer)
 
 
 @register_initializer("orthogonal_tuned")
-def orthogonal_tuned_init(layer: nn.Linear, **kwargs) -> None:
+def orthogonal_tuned_init(layer: nn.Module, **kwargs) -> None:
     """Orthogonal initialization with tuned gain for row-centered-like networks.
 
     Same as orthogonal_he but with gain=sqrt(1.65) instead of sqrt(2).
@@ -235,12 +247,11 @@ def orthogonal_tuned_init(layer: nn.Linear, **kwargs) -> None:
     Use this if orthogonal_he (gain=sqrt(2)) still shows mild explosion.
     """
     nn.init.orthogonal_(layer.weight, gain=math.sqrt(1.65))
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
+    _zero_bias(layer)
 
 
 @register_initializer("centered_with_dc_he")
-def centered_with_dc_he_init(layer: nn.Linear, dc_scale: float = 0.1, **kwargs) -> None:
+def centered_with_dc_he_init(layer: nn.Module, dc_scale: float = 0.1, **kwargs) -> None:
     """Row-centered He initialization with DC component restored.
 
     After row-centering (which forces row sums to zero), this adds back
@@ -261,31 +272,25 @@ def centered_with_dc_he_init(layer: nn.Linear, dc_scale: float = 0.1, **kwargs) 
     The DC component breaks the structural constraint that traps gradients,
     while the centering still provides geometric benefits.
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
     target_std = math.sqrt(2.0 / fan_in)
 
     with torch.no_grad():
         # Standard He init
         layer.weight.normal_(mean=0.0, std=target_std)
 
-        # Center each row
-        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
-
-        # Rescale to restore variance
-        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
-        row_stds = torch.clamp(row_stds, min=1e-8)
-        layer.weight *= target_std / row_stds
+        _row_center_(layer)
+        _match_row_std_(layer, target_std)
 
         # Add DC component to break zero-sum constraint
         layer.weight += dc_scale * target_std
 
-        if layer.bias is not None:
-            layer.bias.zero_()
+        _zero_bias(layer)
 
 
 @register_initializer("custom_variance")
 def custom_variance_init(
-    layer: nn.Linear,
+    layer: nn.Module,
     variance: Optional[float] = None,
     mean: float = 0.0,
     **kwargs,
@@ -299,7 +304,7 @@ def custom_variance_init(
 
     This allows experiments with different variance scales (e.g., 2/d, 2.5/d, 4/d).
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
     if variance is None:
         variance = 2.0 / fan_in
 
@@ -307,12 +312,11 @@ def custom_variance_init(
 
     with torch.no_grad():
         layer.weight.normal_(mean=mean, std=std)
-        if layer.bias is not None:
-            layer.bias.zero_()
+        _zero_bias(layer)
 
 
 @register_initializer("xavier")
-def xavier_init(layer: nn.Linear, **kwargs) -> None:
+def xavier_init(layer: nn.Module, **kwargs) -> None:
     """Xavier (Glorot) initialization.
 
     Uses the average of fan_in and fan_out: Var(W) = 2/(fan_in + fan_out)
@@ -320,29 +324,27 @@ def xavier_init(layer: nn.Linear, **kwargs) -> None:
     Suitable for sigmoid/tanh activations.
     """
     nn.init.xavier_normal_(layer.weight)
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
+    _zero_bias(layer)
 
 
 @register_initializer("uniform_he")
-def uniform_he_init(layer: nn.Linear, **kwargs) -> None:
+def uniform_he_init(layer: nn.Module, **kwargs) -> None:
     """Uniform distribution with He-like variance.
 
     Uses U(-a, a) where a = sqrt(3 * 2/fan_in) so that Var = 2/fan_in.
 
     This matches the original notebook's uniform initialization style.
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
     a = math.sqrt(3 * 2 / fan_in)  # Var(U(-a,a)) = a^2/3
 
     with torch.no_grad():
         layer.weight.uniform_(-a, a)
-        if layer.bias is not None:
-            layer.bias.zero_()
+        _zero_bias(layer)
 
 
 @register_initializer("orthogonal")
-def orthogonal_init(layer: nn.Linear, gain: float = 1.0, **kwargs) -> None:
+def orthogonal_init(layer: nn.Module, gain: float = 1.0, **kwargs) -> None:
     """Orthogonal initialization.
 
     Initializes the weight matrix to be orthogonal (or semi-orthogonal
@@ -353,12 +355,11 @@ def orthogonal_init(layer: nn.Linear, gain: float = 1.0, **kwargs) -> None:
         gain: Multiplicative factor for the weights.
     """
     nn.init.orthogonal_(layer.weight, gain=gain)
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
+    _zero_bias(layer)
 
 @register_initializer("kernel_preserving")
 def kernel_preserving_init(
-    layer: nn.Linear,
+    layer: nn.Module,
     n_samples: int = 500,
     n_pairs: int = 1000,
     lr: float = 0.01,
@@ -390,6 +391,9 @@ def kernel_preserving_init(
         n_steps: Number of optimization steps.
         norm_weight: Weight for norm preservation constraint in loss.
     """
+    if not isinstance(layer, nn.Linear):
+        raise TypeError("kernel_preserving initializer currently supports nn.Linear only")
+
     fan_in = layer.weight.shape[1]
     fan_out = layer.weight.shape[0]
     device = layer.weight.device
@@ -438,13 +442,12 @@ def kernel_preserving_init(
     # Disable gradients and detach
     layer.weight.requires_grad_(False)
 
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
+    _zero_bias(layer)
 
 
 @register_initializer("angle_preserving")
 def angle_preserving_init(
-    layer: nn.Linear,
+    layer: nn.Module,
     n_samples: int = 500,
     n_pairs: int = 2000,
     lr: float = 0.01,
@@ -481,6 +484,9 @@ def angle_preserving_init(
         pair_bins: Number of cosine bins used for pair reweighting.
         eps: Small constant for numerical stability.
     """
+    if not isinstance(layer, nn.Linear):
+        raise TypeError("angle_preserving initializer currently supports nn.Linear only")
+
     fan_in = layer.weight.shape[1]
     fan_out = layer.weight.shape[0]
     device = layer.weight.device
@@ -535,12 +541,11 @@ def angle_preserving_init(
     # Clear temporary optimizer gradient; keep weight trainable for later use.
     layer.weight.grad = None
 
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
+    _zero_bias(layer)
 
 
 @register_initializer("row_centered_final")
-def row_centered_final_init(layer: nn.Linear, **kwargs) -> None:
+def row_centered_final_init(layer: nn.Module, **kwargs) -> None:
     """Row-centered initialization with Tuned Variance (Factor ~1.65).
 
     Data-driven tuning:
@@ -551,26 +556,21 @@ def row_centered_final_init(layer: nn.Linear, **kwargs) -> None:
     Implied Active Fraction is ~60%.
     To achieve Gain=1.0, we need Factor = 1 / 0.6 = 1.66.
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
     
     # MAGIC NUMBER: 1.65
     target_std = math.sqrt(1.65 / fan_in)
 
     with torch.no_grad():
         layer.weight.normal_(mean=0.0, std=target_std)
-        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
-
-        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
-        row_stds = torch.clamp(row_stds, min=1e-8)
-        layer.weight *= target_std / row_stds
-
-        if layer.bias is not None:
-            layer.bias.zero_()
+        _row_center_(layer)
+        _match_row_std_(layer, target_std)
+        _zero_bias(layer)
 
 
 @register_initializer("row_centered_layer_balanced")
 def row_centered_layer_balanced_init(
-    layer: nn.Linear,
+    layer: nn.Module,
     layer_index: int = 0,
     n_layers: int = 1,
     eta: float = 1.0,
@@ -615,7 +615,7 @@ def row_centered_layer_balanced_init(
         eta: Correction strength. 0 = standard row-centered He (var_adj),
              1 = full gradient balance. Default 1.0.
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
 
     # Per-layer scaling factor
     r = math.sqrt((math.pi - 1.0) / math.pi)  # ≈ 0.826
@@ -633,20 +633,51 @@ def row_centered_layer_balanced_init(
         # Sample Gaussian weights
         layer.weight.normal_(mean=0.0, std=target_std)
 
-        # Row centering: each row sums to zero
-        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
+        _row_center_(layer)
+        _match_row_std_(layer, target_std)
+        _zero_bias(layer)
 
-        # Renormalize rows to target_std (centering changes row norms)
-        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
-        row_stds = torch.clamp(row_stds, min=1e-8)
-        layer.weight *= target_std / row_stds
 
-        if layer.bias is not None:
-            layer.bias.zero_()
+@register_initializer("row_centered_layer_balanced_he_base")
+def row_centered_layer_balanced_he_base_init(
+    layer: nn.Module,
+    layer_index: int = 0,
+    n_layers: int = 1,
+    eta: float = 1.0,
+    **kwargs,
+) -> None:
+    """Row-centered He with a backward-stable He base and depth-aware scaling.
+
+    This follows the "backward-aware base" direction from the meeting notes:
+    keep the base variance at standard He scale so backward gain stays near 1,
+    then use depth-dependent per-layer scaling to compensate part of the
+    structural forward decay from row centering.
+
+    Relative to ``row_centered_layer_balanced``:
+    - Base std is ``sqrt(2 / fan_in)`` instead of the var-adjusted base.
+    - The geometric mean forward gain is allowed to stay below 1.
+    - The objective is improved gradient uniformity without inheriting the
+      built-in backward gain > 1 of the var-adjusted base.
+    """
+    fan_in = _fan_in(layer)
+
+    r = math.sqrt((math.pi - 1.0) / math.pi)  # structural forward factor
+    l = layer_index + 1
+    L = n_layers
+    s_l = r ** (eta * (l - (L + 1) / 2))
+
+    base_std = math.sqrt(2.0 / fan_in)
+    target_std = base_std * s_l
+
+    with torch.no_grad():
+        layer.weight.normal_(mean=0.0, std=target_std)
+        _row_center_(layer)
+        _match_row_std_(layer, target_std)
+        _zero_bias(layer)
 
 
 @register_initializer("row_centered_forward_balanced")
-def row_centered_forward_balanced_init(layer: nn.Linear, **kwargs) -> None:
+def row_centered_forward_balanced_init(layer: nn.Module, **kwargs) -> None:
     """Row-centered with variance targeting forward gain = 1.0.
 
     THIS IS A DIAGNOSTIC INITIALIZER — not intended as a solution.
@@ -672,7 +703,7 @@ def row_centered_forward_balanced_init(layer: nn.Linear, **kwargs) -> None:
     After confirming the asymmetry, use the alpha sweep (partial centering)
     to find a structural solution.
     """
-    fan_in = layer.weight.shape[1]
+    fan_in = _fan_in(layer)
 
     # Var(W) = 2π / ((π-1) · d) ≈ 2.934 / d
     factor = 2.0 * math.pi / (math.pi - 1.0)
@@ -680,11 +711,6 @@ def row_centered_forward_balanced_init(layer: nn.Linear, **kwargs) -> None:
 
     with torch.no_grad():
         layer.weight.normal_(mean=0.0, std=target_std)
-        layer.weight -= layer.weight.mean(dim=1, keepdim=True)
-
-        row_stds = layer.weight.std(dim=1, keepdim=True, unbiased=False)
-        row_stds = torch.clamp(row_stds, min=1e-8)
-        layer.weight *= target_std / row_stds
-
-        if layer.bias is not None:
-            layer.bias.zero_()
+        _row_center_(layer)
+        _match_row_std_(layer, target_std)
+        _zero_bias(layer)

@@ -20,7 +20,7 @@ rsync -avz --progress \
     --exclude='.git' \
     --exclude='*.pyc' \
     --exclude='.ipynb_checkpoints' \
-    --exclude='data/' \
+    --exclude='/data/' \
     --exclude='*.sqsh' \
     --exclude='logs/' \
     /Users/itayofer/Thesis/Thesis/ \

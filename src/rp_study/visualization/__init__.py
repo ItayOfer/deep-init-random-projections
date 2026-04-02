@@ -12,3 +12,7 @@ from .projection_plots import (
     plot_multi_layer_transformations,
     plot_shape_transformations,
 )
+from .training_plots import (
+    plot_training_histories,
+    plot_supervised_comparison_matrix,
+)

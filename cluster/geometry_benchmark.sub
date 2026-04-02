@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH --job-name=geometry_benchmark
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+#SBATCH --time=02:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python cluster/run_geometry_benchmark.py \
+    --dataset cifar10 \
+    --depths 5,10,15,20 \
+    --init-strategies he,orthogonal_he,row_centered_he_var_adj \
+    --num-samples 2000 \
+    --device cuda \
+    --output reports/results/geometry_benchmark_cifar10.json"

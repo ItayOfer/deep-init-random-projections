@@ -92,11 +92,15 @@ class LayerSignalStats:
                                    # regardless of layer dimensions.
     backward_gain: float           # rms(δ^l) / rms(δ^{l+1})
                                    # Per-neuron backward signal gain.
+    gain_product: float            # forward_gain * backward_gain
+                                   # Useful for diagnosing coupled gain trade-offs.
     relu_survival_rate: float      # fraction of z^l entries > 0
     centering_ratio: float         # Var(a^{l-1})/E[(a^{l-1})²] per sample, averaged
                                    # This is the factor by which row-centering reduces
                                    # the effective forward gain. Should be ~0.68 for
                                    # half-Gaussian post-ReLU, and ~1.0 for standard He.
+    gradient_scale_proxy: float    # rms(a^{l-1}) * rms(δ^l)
+                                   # A scale proxy for ||∂C/∂W^l|| from BP4.
 
 
 @dataclass
@@ -149,6 +153,10 @@ class ExperimentResults:
         """Get per-layer backward gain: ||δ^l||_F / ||δ^{l+1}||_F."""
         return {f"L{s.layer_idx}": s.backward_gain for s in self.signal_stats}
 
+    def get_gain_products(self) -> Dict[str, float]:
+        """Get per-layer forward/backward gain product."""
+        return {f"L{s.layer_idx}": s.gain_product for s in self.signal_stats}
+
     def get_relu_survival_rates(self) -> Dict[str, float]:
         """Get per-layer ReLU survival rate (fraction of z^l > 0)."""
         return {f"L{s.layer_idx}": s.relu_survival_rate for s in self.signal_stats}
@@ -170,6 +178,10 @@ class ExperimentResults:
     def get_error_signal_rms(self) -> Dict[str, float]:
         """Get per-layer error signal RMS: ||δ^l||_F / sqrt(n_samples * d_l)."""
         return {f"L{s.layer_idx}": s.error_signal_rms for s in self.signal_stats}
+
+    def get_gradient_scale_proxies(self) -> Dict[str, float]:
+        """Get BP4 proxy rms(a^{l-1}) * rms(δ^l) for each hidden layer."""
+        return {f"L{s.layer_idx}": s.gradient_scale_proxy for s in self.signal_stats}
 
 
 class GradientExperiment:
@@ -224,6 +236,7 @@ class GradientExperiment:
         self.net = FeedForward(
             layer_sizes=network_config.layer_sizes,
             init_strategy=network_config.init_strategy,
+            use_bias=network_config.use_bias,
             variance=network_config.weight_variance,
             mean=network_config.weight_mean,
             **network_config.init_kwargs,
@@ -391,6 +404,7 @@ class GradientExperiment:
             # Backward gain: rms(δ^l) / rms(δ^{l+1})
             next_delta_rms = err_rms.get(layer_idx + 1, 0.0)
             bwd_gain = delta_rms_val / next_delta_rms if next_delta_rms > 0 else float('nan')
+            gain_product = fwd_gain * bwd_gain if np.isfinite(fwd_gain) and np.isfinite(bwd_gain) else float("nan")
 
             # ReLU survival rate: fraction of z^l > 0
             survival = (z > 0).float().mean().item()
@@ -412,6 +426,7 @@ class GradientExperiment:
             safe_mean_sq = torch.clamp(per_sample_mean_sq, min=1e-12)
             per_sample_ratio = 1.0 - (per_sample_mean ** 2) / safe_mean_sq
             centering_ratio = per_sample_ratio.mean().item()
+            gradient_scale_proxy = prev_rms * delta_rms_val
 
             stats.append(LayerSignalStats(
                 layer_idx=layer_idx,
@@ -420,8 +435,10 @@ class GradientExperiment:
                 error_signal_rms=delta_rms_val,
                 forward_gain=fwd_gain,
                 backward_gain=bwd_gain,
+                gain_product=gain_product,
                 relu_survival_rate=survival,
                 centering_ratio=centering_ratio,
+                gradient_scale_proxy=gradient_scale_proxy,
             ))
 
         return stats

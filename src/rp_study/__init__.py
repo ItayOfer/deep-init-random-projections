@@ -7,4 +7,11 @@ and neural network initialization strategies.
 
 __version__ = "0.1.0"
 
-from .config import ExperimentConfig, NetworkConfig, GradientExperimentConfig
+from .config import (
+    ExperimentConfig,
+    NetworkConfig,
+    GradientExperimentConfig,
+    ClassifierConfig,
+    TrainingConfig,
+    GeometryBenchmarkConfig,
+)
