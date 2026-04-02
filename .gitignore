@@ -1,1 +1,6 @@
 __pycache__/
+
+# Cluster and Slurm Artifacts
+*.sqsh
+*.out
+*.err
