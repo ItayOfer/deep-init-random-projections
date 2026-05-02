@@ -1,0 +1,349 @@
+% ══════════════════════════════════════════════════════════════════
+\chapter{Introduction and Mathematical Framework}
+\label{ch:framework}
+% ══════════════════════════════════════════════════════════════════
+
+\section{Problem Statement}
+
+Consider a deep feed-forward ReLU network with $L$ hidden layers.
+Layer~$l$ maps $\R^{d_{l-1}} \to \R^{d_l}$ via
+\begin{equation}\label{eq:forward}
+  \bm{h}^{(0)} = \bm{x}, \qquad
+  \bm{h}^{(l)} = \relu\!\bigl(W^{(l)}\,\bm{h}^{(l-1)}\bigr),
+  \quad l = 1,\dots,L,
+\end{equation}
+where $W^{(l)} \in \R^{d_l \times d_{l-1}}$ and
+$\relu(z) = \max(0,z)$ is applied element-wise.
+In general, the weight matrices need not be square.
+For simplicity, in this work we study constant-width networks
+($d_l = d$ for all~$l$), but the analysis generalizes to
+non-square layers.
+
+We study two desiderata for the weight matrices $\{W^{(l)}\}$:
+\begin{enumerate}[label=(\roman*)]
+  \item \textbf{Geometry preservation.}  Class separability of the input
+        data should survive the composition of $L$ layers.  Formally,
+        for data pairs $(\bm{x}_i, \bm{x}_j)$, we would like
+        \[
+          \E\!\Bigl[
+            \bigl\langle \relu(W\bm{x}_i),\; \relu(W\bm{x}_j) \bigr\rangle
+          \Bigr]
+          \;\approx\;
+          \bigl\langle \bm{x}_i,\, \bm{x}_j \bigr\rangle.
+        \]
+  \item \textbf{Gradient stability.}  The gradient magnitude
+        $\|\partial \mathcal{C}/\partial W^{(l)}\|$ should be approximately
+        the same for every layer~$l$, so that all layers receive a useful
+        learning signal.
+\end{enumerate}
+
+\noindent
+The central finding of this work is that these two objectives are in
+\emph{structural conflict} when the nonlinearity is ReLU.
+
+% ──────────────────────────────────────────────────────────────────
+\section{The Arc-Cosine Kernel (Summary)}
+\label{sec:kernel}
+
+The arc-cosine kernel framework~\cite{cho2009kernel} characterizes
+the expected inner product of post-ReLU outputs.
+These results were discussed previously with the advisor; we state
+them here without proof for reference.
+
+Let $W \in \R^{d_{\mathrm{out}} \times d_{\mathrm{in}}}$ have i.i.d.\
+rows $\bm{w}_k \sim \mathcal{N}(\bm{0},\, \sigma^2 I)$.
+For two unit-norm inputs with angle
+$\alpha = \arccos\!\bigl(\langle \bm{x}_i, \bm{x}_j \rangle\bigr)
+  \in [0,\pi]$:
+
+\begin{theorem}[Arc-cosine kernel, first order]
+\label{thm:kernel}
+\begin{equation}\label{eq:kernel}
+  K(\alpha)
+  \;=\;
+  \frac{1}{d_{\mathrm{out}}}
+  \,\E\!\Bigl[
+    \bigl\langle \relu(W\bm{x}_i),\; \relu(W\bm{x}_j) \bigr\rangle
+  \Bigr]
+  \;=\;
+  \frac{\sigma^2}{2\pi}\,
+  \bigl(\sin\alpha + (\pi - \alpha)\cos\alpha\bigr).
+\end{equation}
+\end{theorem}
+
+The normalized kernel $\hat{K}(\alpha) = K(\alpha)/K(0)
+= \frac{1}{\pi}(\sin\alpha + (\pi-\alpha)\cos\alpha)$
+gives the expected cosine similarity of the outputs.
+The output angle after one layer is:
+\begin{equation}\label{eq:angle_map}
+  \alpha' = \arccos\!\bigl(\hat{K}(\alpha)\bigr)
+  = \arccos\!\left(
+    \frac{\sin\alpha + (\pi-\alpha)\cos\alpha}{\pi}
+  \right).
+\end{equation}
+Since $\hat{K}(\alpha) > \cos\alpha$ for all $\alpha \in (0,\pi)$,
+the output angle is always smaller than the input angle:
+
+\begin{proposition}[Systematic angle contraction]
+\label{prop:distortion}
+\begin{equation}\label{eq:distortion}
+  D(\alpha)
+  = \hat{K}(\alpha) - \cos\alpha
+  = \frac{1}{\pi}\bigl(\sin\alpha - \alpha\cos\alpha\bigr)
+  > 0
+  \quad\text{for all } \alpha \in (0, \pi).
+\end{equation}
+\end{proposition}
+
+\noindent
+This means \textbf{every pair of distinct vectors becomes more similar
+after one ReLU layer}.  Over $L$ layers this compounds: angles contract
+toward~$0$, causing \emph{geometric collapse}.
+This distortion is independent of $\sigma^2$ and is therefore
+a property of the ReLU nonlinearity, not of the initialization.
+The empirical consequences are explored in
+Chapters~\ref{ch:geometry} and~\ref{ch:angle_map}.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Measuring Geometry}
+\label{sec:geometry_metrics}
+
+Previous work in this project used a PCA-based metric:
+$\Var(\text{PC}_1)/\bigl(\Var(\text{PC}_1) + \Var(\text{PC}_2)\bigr)$,
+which measures the elongation of the 2D PCA projection.
+As we will show in Chapter~\ref{ch:geometry}, this metric is
+\textbf{misleading}: data can be spread across many dimensions
+(appearing ``well-preserved'' in PCA scatter plots) while having
+\emph{no class structure} whatsoever.
+
+We adopt three metrics that capture complementary aspects of geometry:
+
+\begin{definition}[$k$-NN accuracy]
+\label{def:knn}
+Given projected data $\{\bm{h}_i^{(L)}\}_{i=1}^{n}$ with labels
+$\{y_i\}$, the $k$-NN accuracy is the \emph{leave-one-out}
+classification accuracy using Euclidean distance with $k=5$ neighbors.
+
+Concretely: for each data point~$i$, we find the $k=5$ nearest
+points in the projected space (by Euclidean distance among all
+\emph{other} points), and classify~$i$ by majority vote of their
+labels.  The $k$-NN accuracy is the fraction of points correctly
+classified this way.
+
+Chance level is $1/C$ where $C$ is the number of classes
+(0.10 for Fashion-MNIST with 10 classes).
+\end{definition}
+
+\begin{remark}[Sensitivity to the choice of $k$]
+The choice $k=5$ is not critical.  At $k=1$, the metric is more
+sensitive to noise (a single nearest neighbor could be an outlier).
+At $k=100$, it over-smooths and measures only coarse cluster
+separation.  For our 2000-sample, 10-class dataset, $k=5$
+provides a stable, local measure of class structure.
+Empirically, results are similar for $k \in \{3, 5, 10\}$.
+\end{remark}
+
+\begin{definition}[Pairwise distance correlation]
+Sample $m$ random pairs.  For each pair $(i,j)$, compute the
+Euclidean distance $d^{(0)}_{ij} = \|\bm{x}_i - \bm{x}_j\|$
+in the input space and
+$d^{(L)}_{ij} = \|\bm{h}_i^{(L)} - \bm{h}_j^{(L)}\|$
+in the projected space.  The metric is the Spearman rank correlation
+$\rho_s\!\bigl(\{d^{(0)}_{ij}\}, \{d^{(L)}_{ij}\}\bigr)$.
+\end{definition}
+
+\begin{definition}[Effective dimensionality]
+Let $\lambda_1 \geq \lambda_2 \geq \cdots \geq \lambda_d \geq 0$ be
+the eigenvalues of the covariance matrix of $\{\bm{h}_i^{(L)}\}$.
+Define the normalized distribution
+$p_k = \lambda_k / \sum_j \lambda_j$.  The effective dimensionality is
+\begin{equation}\label{eq:effdim}
+  d_{\mathrm{eff}}
+  = \exp\!\Bigl(-\sum_{k} p_k \ln p_k\Bigr)
+  = \exp\!\bigl(H(\{p_k\})\bigr),
+\end{equation}
+where $H$ is the Shannon entropy.  This ranges from~$1$ (all variance
+in one direction) to~$d$ (uniform spread).
+\end{definition}
+
+\begin{remark}[Why $k$-NN is our primary metric]
+\label{rem:knn_primary}
+The $k$-NN accuracy directly answers the question:
+\emph{can we tell which class a point belongs to based on its
+neighbors in the projected space?}  This is the operational definition
+of ``class structure survives the projection.''
+
+Unlike distance correlation (which measures global distance ranking)
+or effective dimensionality (which measures spread), $k$-NN measures
+whether \emph{local neighborhoods} are class-consistent --- the
+most relevant notion for classification.
+
+In particular, high effective dimensionality combined with low
+$k$-NN accuracy indicates \emph{uniformly dispersed noise}
+(data spread across many dimensions with no class structure),
+as we will see for row-centered initialization in
+Chapter~\ref{ch:geometry}.
+\end{remark}
+
+% ──────────────────────────────────────────────────────────────────
+\section{Measuring Gradient Health}
+\label{sec:gradient_health}
+
+\subsection{Activation and error signal matrices}
+
+\begin{definition}[Activation matrix]
+\label{def:activation_matrix}
+Given a batch of $n$ input samples $\{\bm{x}_1, \dots, \bm{x}_n\}$,
+the \emph{activation matrix} at layer~$l$ is
+$A^{(l)} \in \R^{n \times d_l}$, where the $i$-th row is the
+post-ReLU activation vector of the $i$-th sample:
+\[
+  (A^{(l)})_{ik} \;=\; a^{(l)}_{ik}
+  \;=\; [\bm{h}^{(l)}_i]_k
+  \;=\; \relu\!\bigl(z^{(l)}_{ik}\bigr),
+\]
+with pre-activation
+$z^{(l)}_{ik} = \sum_{j=1}^{d_{l-1}} W^{(l)}_{kj}\, a^{(l-1)}_{ij}$.
+In words: $a^{(l)}_{ik}$ is the value of the $k$-th neuron in
+layer~$l$ when processing sample~$i$.
+\end{definition}
+
+\begin{definition}[Error signal matrix]
+\label{def:error_signal}
+For a loss function $\mathcal{C}$, the \emph{error signal}
+(backpropagated error) at layer~$l$ for sample~$i$ is
+\[
+  \bm{\delta}^{(l)}_i
+  \;=\; \frac{\partial \mathcal{C}}{\partial \bm{z}^{(l)}_i}
+  \;\in\; \R^{d_l},
+\]
+where $\bm{z}^{(l)}_i$ is the pre-activation vector at layer~$l$
+for sample~$i$.  This is computed recursively via the
+\emph{backpropagation equation}:
+\begin{equation}\label{eq:bp_recursion}
+  \bm{\delta}^{(l)}_i
+  = \bigl(W^{(l+1)}\bigr)^\top \bm{\delta}^{(l+1)}_i
+    \;\odot\; \sigma'\!\bigl(\bm{z}^{(l)}_i\bigr),
+\end{equation}
+where $\sigma'(\bm{z}^{(l)}_i) = \mathbf{1}[\bm{z}^{(l)}_i > 0]$
+is the ReLU derivative (a binary mask: $1$ where the pre-activation
+was positive, $0$ where it was not).
+
+The \emph{error signal matrix} $\Delta^{(l)} \in \R^{n \times d_l}$
+collects these row-wise:
+$(\Delta^{(l)})_{ik} = \delta^{(l)}_{ik}$.
+\end{definition}
+
+\subsection{Root-mean-square (RMS) signal levels}
+
+Using the activation matrix from Definition~\ref{def:activation_matrix},
+we define:
+\begin{equation}\label{eq:rms}
+  \rms\!\bigl(A^{(l)}\bigr)
+  = \frac{\|A^{(l)}\|_F}{\sqrt{n \cdot d_l}}
+  = \sqrt{\frac{1}{n \cdot d_l}
+    \sum_{i=1}^{n}\sum_{k=1}^{d_l} (a^{(l)}_{ik})^2}
+  = \sqrt{\E_{i,k}\!\bigl[(a^{(l)}_{ik})^2\bigr]}.
+\end{equation}
+This is the typical magnitude of a single activation entry, independent
+of batch size and layer width.  The same definition applies to the
+error signal matrix: $\rms(\Delta^{(l)})$.
+
+\subsection{Per-layer gains}
+
+\begin{definition}[Forward gain]
+\begin{equation}\label{eq:fwd_gain}
+  g_{\mathrm{fwd}}^{(l)}
+  = \frac{\rms(A^{(l)})}{\rms(A^{(l-1)})}
+  = \sqrt{\frac{\E[(a^{(l)})^2]}{\E[(a^{(l-1)})^2]}}.
+\end{equation}
+\end{definition}
+
+\begin{definition}[Backward gain]
+\label{def:bwd_gain}
+\begin{equation}\label{eq:bwd_gain}
+  g_{\mathrm{bwd}}^{(l)}
+  = \frac{\rms(\Delta^{(l)})}{\rms(\Delta^{(l+1)})},
+\end{equation}
+using the error signal matrices from
+Definition~\ref{def:error_signal}.
+Note the direction: the backward gain measures how the error
+signal grows (or shrinks) as it propagates \emph{backward}
+from layer~$l+1$ to layer~$l$.
+\end{definition}
+
+\subsection{Connection to weight gradients}
+\label{sec:connection_grad}
+
+The fourth backpropagation equation gives the gradient of the loss
+with respect to the weights at layer~$l$.  For a single sample~$i$:
+\[
+  \frac{\partial \mathcal{C}_i}{\partial W^{(l)}}
+  = \bm{\delta}^{(l)}_i \,\bigl(\bm{a}^{(l-1)}_i\bigr)^\top
+  \;\in\; \R^{d_l \times d_{l-1}}.
+\]
+Averaging over the batch of $n$ samples and writing in matrix form:
+\begin{equation}\label{eq:bp4}
+  \frac{\partial \mathcal{C}}{\partial W^{(l)}}
+  = \frac{1}{n}\,
+    \bigl(\Delta^{(l)}\bigr)^\top A^{(l-1)}
+  \;\in\; \R^{d_l \times d_{l-1}}.
+\end{equation}
+
+We can now bound the gradient magnitude.  Taking the Frobenius norm:
+\[
+  \left\|\frac{\partial \mathcal{C}}{\partial W^{(l)}}\right\|_F
+  = \frac{1}{n}\,
+    \bigl\|(\Delta^{(l)})^\top A^{(l-1)}\bigr\|_F.
+\]
+By the submultiplicativity of the Frobenius norm
+($\|AB\|_F \leq \|A\|_F\,\|B\|_F$):
+\[
+  \left\|\frac{\partial \mathcal{C}}{\partial W^{(l)}}\right\|_F
+  \;\leq\;
+  \frac{1}{n}\,
+  \|\Delta^{(l)}\|_F \cdot \|A^{(l-1)}\|_F.
+\]
+Writing $\|\Delta^{(l)}\|_F = \rms(\Delta^{(l)}) \cdot \sqrt{n \cdot d_l}$
+and $\|A^{(l-1)}\|_F = \rms(A^{(l-1)}) \cdot \sqrt{n \cdot d_{l-1}}$:
+\begin{equation}\label{eq:grad_magnitude}
+  \left\|\frac{\partial \mathcal{C}}{\partial W^{(l)}}\right\|_F
+  \;\leq\;
+  \sqrt{d_l \cdot d_{l-1}}\;\cdot\;
+  \rms\!\bigl(\Delta^{(l)}\bigr) \;\cdot\;
+  \rms\!\bigl(A^{(l-1)}\bigr).
+\end{equation}
+When the rows of $\Delta^{(l)}$ and $A^{(l-1)}$ are approximately
+uncorrelated (which holds at initialization), this bound is
+approximately tight.  Since $\sqrt{d_l \cdot d_{l-1}}$ is the same
+for every layer (in a constant-width network), we conclude:
+\begin{equation}\label{eq:grad_proportional}
+  \left\|\frac{\partial \mathcal{C}}{\partial W^{(l)}}\right\|_F
+  \;\propto\;
+  \rms\!\bigl(A^{(l-1)}\bigr) \;\cdot\;
+  \rms\!\bigl(\Delta^{(l)}\bigr).
+\end{equation}
+The gradient magnitude at layer~$l$ is proportional to the product
+of the \textbf{forward signal} (activation RMS at layer~$l-1$) and
+the \textbf{backward signal} (error signal RMS at layer~$l$).
+If either varies across layers, the gradients become non-uniform.
+
+\subsection{Why gain $\approx 1$ is critical}
+
+If the per-layer gain is a constant $g$ across all $L$ layers, the
+cumulative effect is $g^L$:
+\begin{center}
+\begin{tabular}{ccc}
+\toprule
+Per-layer gain $g$ & $g^{50}$ & Effect \\
+\midrule
+1.01 & 1.64 & Mild growth \\
+1.10 & $1.17 \times 10^2$ & Explosion \\
+\textbf{0.826} & $\bm{7.1 \times 10^{-5}}$ & \textbf{Vanishing} \\
+0.99 & 0.61 & Mild decay \\
+\bottomrule
+\end{tabular}
+\end{center}
+The value $g = 0.826 = \sqrt{(\pi-1)/\pi}$ will appear throughout this
+work as the structural forward gain of row-centered initialization
+(Chapter~\ref{ch:gradient_trap}).

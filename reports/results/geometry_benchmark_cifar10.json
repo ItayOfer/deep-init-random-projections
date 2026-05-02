@@ -1,0 +1,110 @@
+[
+  {
+    "init_strategy": "he",
+    "depth": 5,
+    "overflow": false,
+    "knn_accuracy": 0.247,
+    "distance_correlation": 0.9421801275450319,
+    "effective_dim": 50.916072845458984,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "he",
+    "depth": 10,
+    "overflow": false,
+    "knn_accuracy": 0.2395,
+    "distance_correlation": 0.8599950874987717,
+    "effective_dim": 35.01640319824219,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "he",
+    "depth": 15,
+    "overflow": false,
+    "knn_accuracy": 0.224,
+    "distance_correlation": 0.7917357422308366,
+    "effective_dim": 21.483312606811523,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "he",
+    "depth": 20,
+    "overflow": false,
+    "knn_accuracy": 0.221,
+    "distance_correlation": 0.7476077379019345,
+    "effective_dim": 14.382261276245117,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "orthogonal_he",
+    "depth": 5,
+    "overflow": false,
+    "knn_accuracy": 0.2385,
+    "distance_correlation": 0.9431273492818374,
+    "effective_dim": 49.2972297668457,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "orthogonal_he",
+    "depth": 10,
+    "overflow": false,
+    "knn_accuracy": 0.2385,
+    "distance_correlation": 0.8675019747008069,
+    "effective_dim": 32.391624450683594,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "orthogonal_he",
+    "depth": 15,
+    "overflow": false,
+    "knn_accuracy": 0.2385,
+    "distance_correlation": 0.8129567992391998,
+    "effective_dim": 22.192171096801758,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "orthogonal_he",
+    "depth": 20,
+    "overflow": false,
+    "knn_accuracy": 0.228,
+    "distance_correlation": 0.7672869248594638,
+    "effective_dim": 14.482264518737793,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "row_centered_he_var_adj",
+    "depth": 5,
+    "overflow": false,
+    "knn_accuracy": 0.219,
+    "distance_correlation": 0.6648493147116472,
+    "effective_dim": 650.3046264648438,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "row_centered_he_var_adj",
+    "depth": 10,
+    "overflow": false,
+    "knn_accuracy": 0.127,
+    "distance_correlation": 0.6013120863280216,
+    "effective_dim": 917.7894897460938,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "row_centered_he_var_adj",
+    "depth": 15,
+    "overflow": false,
+    "knn_accuracy": 0.1005,
+    "distance_correlation": 0.5852664323166081,
+    "effective_dim": 957.75830078125,
+    "effective_dim_original": 37.799617767333984
+  },
+  {
+    "init_strategy": "row_centered_he_var_adj",
+    "depth": 20,
+    "overflow": false,
+    "knn_accuracy": 0.098,
+    "distance_correlation": 0.575128048282012,
+    "effective_dim": 955.528564453125,
+    "effective_dim_original": 37.799617767333984
+  }
+]

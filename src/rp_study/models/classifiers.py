@@ -22,6 +22,8 @@ class DeepFCClassifier(nn.Module):
         init_strategy: str = "he",
         use_batch_norm: bool = False,
         use_bias: bool = True,
+        bn_momentum: float = 0.1,
+        bn_eps: float = 1e-5,
         **init_kwargs,
     ) -> None:
         super().__init__()
@@ -53,7 +55,7 @@ class DeepFCClassifier(nn.Module):
             )
             self.hidden_layers.append(linear)
             if use_batch_norm:
-                self.hidden_norms.append(nn.BatchNorm1d(fan_out))
+                self.hidden_norms.append(nn.BatchNorm1d(fan_out, eps=bn_eps, momentum=bn_momentum))
 
         self.classifier = nn.Linear(hidden_dim, num_classes, bias=use_bias)
         initialize_layer(
@@ -89,6 +91,8 @@ class DeepCNNClassifier(nn.Module):
         init_strategy: str = "he",
         use_batch_norm: bool = False,
         use_bias: bool = True,
+        bn_momentum: float = 0.1,
+        bn_eps: float = 1e-5,
         **init_kwargs,
     ) -> None:
         super().__init__()
@@ -146,7 +150,9 @@ class DeepCNNClassifier(nn.Module):
                 )
                 self.conv_layers.append(conv)
                 if use_batch_norm:
-                    self.conv_norms.append(nn.BatchNorm2d(out_channels))
+                    self.conv_norms.append(
+                        nn.BatchNorm2d(out_channels, eps=bn_eps, momentum=bn_momentum)
+                    )
                 spec_idx += 1
 
             if stage_idx < len(stage_lengths) - 1:
@@ -209,6 +215,8 @@ def build_classifier(config: ClassifierConfig) -> nn.Module:
             init_strategy=config.init_strategy,
             use_batch_norm=config.use_batch_norm,
             use_bias=config.use_bias,
+            bn_momentum=config.bn_momentum,
+            bn_eps=config.bn_eps,
             **kwargs,
         )
     if config.architecture == "cnn":
@@ -221,6 +229,8 @@ def build_classifier(config: ClassifierConfig) -> nn.Module:
             init_strategy=config.init_strategy,
             use_batch_norm=config.use_batch_norm,
             use_bias=config.use_bias,
+            bn_momentum=config.bn_momentum,
+            bn_eps=config.bn_eps,
             **kwargs,
         )
     raise ValueError(f"Unknown architecture: {config.architecture}")

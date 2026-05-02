@@ -714,3 +714,144 @@ def row_centered_forward_balanced_init(layer: nn.Module, **kwargs) -> None:
         _row_center_(layer)
         _match_row_std_(layer, target_std)
         _zero_bias(layer)
+
+
+@register_initializer("row_centered_product_balanced")
+def row_centered_product_balanced_init(layer: nn.Module, **kwargs) -> None:
+    """Row-centered initialization with variance chosen so that g_fwd · g_bwd = 1.
+
+    Mathematical derivation:
+        For row-centered weights with Var(W_{ij}) = v/d, define s = √(v/2).
+        The forward and backward gains are (from Sections 3.2 and 3.3):
+
+            g_fwd = r · s,    g_bwd = s,
+
+        where r = √((π-1)/π) ≈ 0.826 is the structural centering factor.
+
+        Setting the product to unity:
+
+            g_fwd · g_bwd = r · s² = 1
+            ⟹  s² = 1/r = (π/(π-1))^{1/2}
+            ⟹  s* = (π/(π-1))^{1/4} ≈ 1.1006
+
+        The corresponding variance scale is:
+
+            v* = 2 · s*² = 2 · √(π/(π-1)) ≈ 2.4224
+
+        So:  Var(W_{ij}) = 2·√(π/(π-1)) / d ≈ 2.422/d.
+
+    Resulting per-layer gains:
+        g_fwd = ((π-1)/π)^{1/4} ≈ 0.9089
+        g_bwd = (π/(π-1))^{1/4}  ≈ 1.1006
+        g_fwd · g_bwd = 1.0 (exact)
+        g_fwd / g_bwd = √((π-1)/π) ≈ 0.826 (structural coupling, exact)
+
+    Properties:
+        - Full row centering maintained (Σ_j W_{ij} = 0).
+        - With UNIFORM variance, the gradient spread across layers is still
+          r^{-(L-1)}, identical to any other uniform RC variant.  The product
+          condition does NOT by itself produce uniform gradients.
+        - What it DOES achieve: minimizes the dynamic range of both activations
+          and error signals simultaneously.  At L = 50 the activation decay is
+          0.909^{50} ≈ 0.008 (127×) and error growth is 1.101^{49} ≈ 119×,
+          compared to 14 000× for either var_adj or fwd_balanced.
+        - Makes the geometric mean of gradient norms depth-independent.
+        - Serves as the optimal base for the layer-balanced scheme (see
+          row_centered_layer_balanced_product_base).
+    """
+    fan_in = _fan_in(layer)
+
+    # v* = 2 · √(π/(π-1)) ≈ 2.4224
+    factor = 2.0 * math.sqrt(math.pi / (math.pi - 1.0))
+    target_std = math.sqrt(factor / fan_in)
+
+    with torch.no_grad():
+        layer.weight.normal_(mean=0.0, std=target_std)
+        _row_center_(layer)
+        _match_row_std_(layer, target_std)
+        _zero_bias(layer)
+
+
+@register_initializer("row_centered_layer_balanced_product_base")
+def row_centered_layer_balanced_product_base_init(
+    layer: nn.Module,
+    layer_index: int = 0,
+    n_layers: int = 1,
+    eta: float = 1.0,
+    **kwargs,
+) -> None:
+    """Row-centered He with product-balanced base and per-layer variance scaling.
+
+    This combines two ideas:
+
+    (1) **Product-balanced base** (from row_centered_product_balanced):
+        Choose the base variance so that g_fwd · g_bwd = 1.  This gives
+
+            s* = (π/(π-1))^{1/4} ≈ 1.1006,
+
+        the unique point where neither the forward chain (activations) nor
+        the backward chain (error signals) is severely stressed.
+
+    (2) **Per-layer scaling** (from the η-scheme in Section 4.2):
+        Use a depth-dependent schedule s_l that redistributes variance across
+        layers to compensate the structural forward decay r^{l-1}.
+
+    Combined formula:
+        r  = √((π-1)/π) ≈ 0.826        (structural centering factor)
+        s* = (π/(π-1))^{1/4} ≈ 1.1006   (product-balanced factor)
+
+        s_l = s* · r^{η·(l - (L+1)/2)}  (per-layer scaling, 1-indexed)
+
+        target_std_l = √(2/fan_in) · s_l
+
+    Gradient analysis (from BP4, equation 1.12):
+        ||∂C/∂W^(l)|| ∝ rms(A^{l-1}) · rms(Δ^l)
+
+        The forward chain gives:
+            rms(A^{l-1}) ∝ ∏_{k=1}^{l-1} (r · s_k)
+
+        The backward chain gives:
+            rms(Δ^l) ∝ ∏_{k=l+1}^{L} s_k
+
+        Combining:
+            ||∂C/∂W^(l)|| ∝ r^{l-1} · (∏_{k=1}^{L} s_k) / s_l
+
+        For uniform gradients we need r^{l-1}/s_l = const, which the
+        η-scaling achieves at η = 1.
+
+    Comparison with existing layer-balanced variants:
+        ┌────────────────────┬───────────┬───────────┬─────────┐
+        │ Base               │ Avg g_fwd │ Avg g_bwd │ Product │
+        ├────────────────────┼───────────┼───────────┼─────────┤
+        │ He (v=2/d)         │   0.826   │   1.000   │  0.826  │
+        │ Product (v≈2.42/d) │   0.909   │   1.101   │  1.000  │
+        │ Fwd-bal (v≈2.93/d) │   1.000   │   1.211   │  1.211  │
+        └────────────────────┴───────────┴───────────┴─────────┘
+
+        The product-balanced base sits at the natural midpoint: neither
+        chain dominates the gradient profile, and the per-layer scaling
+        can focus purely on redistributing the r^{l-1} decay.
+
+    Args:
+        layer: nn.Linear or nn.Conv2d layer to initialize.
+        layer_index: 0-based index of this layer in the network.
+        n_layers: Total number of weight layers in the network.
+        eta: Correction strength. 0 = uniform product-balanced (no per-layer
+             adjustment), 1 = full gradient balance. Default 1.0.
+    """
+    fan_in = _fan_in(layer)
+
+    r = math.sqrt((math.pi - 1.0) / math.pi)       # ≈ 0.826
+    s_star = (math.pi / (math.pi - 1.0)) ** 0.25    # ≈ 1.1006
+
+    l = layer_index + 1   # 1-indexed layer number
+    L = n_layers
+    s_l = s_star * r ** (eta * (l - (L + 1) / 2))
+
+    target_std = math.sqrt(2.0 / fan_in) * s_l
+
+    with torch.no_grad():
+        layer.weight.normal_(mean=0.0, std=target_std)
+        _row_center_(layer)
+        _match_row_std_(layer, target_std)
+        _zero_bias(layer)

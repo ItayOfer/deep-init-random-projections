@@ -1,0 +1,71 @@
+\documentclass[11pt,a4paper]{report}
+
+% ── Packages ──────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{mdframed}
+
+% ── Theorem environments ─────────────────────────────────────────
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+
+% ── Custom commands ───────────────────────────────────────────────
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\rms}{\operatorname{rms}}
+\newcommand{\relu}{\operatorname{ReLU}}
+\newcommand{\diag}{\operatorname{diag}}
+\DeclareMathOperator{\sign}{sign}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+% Flag box for issues
+\newenvironment{flagbox}{%
+  \begin{mdframed}[linecolor=red!75!black,backgroundcolor=red!5!white,linewidth=1.5pt]%
+  \textbf{\textcolor{red!75!black}{Flag.}}\ %
+}{%
+  \end{mdframed}%
+}
+
+% ── Title ─────────────────────────────────────────────────────────
+\title{%
+  Initialization Strategies for Deep ReLU Networks:\\
+  Geometry Preservation vs.\ Gradient Stability
+}
+\author{Itay Ofer}
+\date{March 2026}
+
+% ══════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+\tableofcontents
+
+\input{chapters/ch1_framework}
+\input{chapters/ch2_initializers}
+\input{chapters/ch3_gradient_trap}
+\input{chapters/ch4_fixing_trap}
+\input{chapters/ch5_geometry}
+\input{chapters/ch6_kernel}
+\input{chapters/ch7_angle_map}
+\input{chapters/ch8_conclusions}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

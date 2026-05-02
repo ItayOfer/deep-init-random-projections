@@ -1,0 +1,51 @@
+#!/bin/bash
+#SBATCH --job-name=fnn_he_tune_smoke
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=dgx01
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=01:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/run_supervised_sweep.py \
+    --datasets cifar10,fashion_mnist \
+    --architectures fc \
+    --depths 30 \
+    --init-strategies he \
+    --batch-norm false,true \
+    --epochs 2 \
+    --min-epochs 1 \
+    --num-train-samples 256 \
+    --num-test-samples 128 \
+    --eval-batch-size 128 \
+    --device cuda \
+    --normalize-inputs \
+    --target-train-accuracy 0.995 \
+    --target-patience 1 \
+    --target-metric eval_train_accuracy \
+    --nobn-optimizers adam \
+    --nobn-adam-lrs 1e-3 \
+    --nobn-sgd-lrs 1e-2 \
+    --nobn-schedulers none \
+    --nobn-weight-decays 0 \
+    --nobn-batch-sizes 64 \
+    --bn-optimizers adam \
+    --bn-adam-lrs 1e-3 \
+    --bn-sgd-lrs 3e-2 \
+    --bn-schedulers cosine \
+    --bn-weight-decays 0 \
+    --bn-batch-sizes 64 \
+    --bn-norm-momentums 0.1 \
+    --log-every-epoch \
+    --output reports/results/fnn_he_tuning_smoke.json \
+    --best-output reports/results/fnn_he_tuning_smoke_best.json"

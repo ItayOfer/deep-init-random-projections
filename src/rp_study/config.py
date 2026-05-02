@@ -73,6 +73,8 @@ class ClassifierConfig:
     cnn_input_channels: int = 1
     cnn_base_channels: int = 32
     cnn_max_channels: int = 256
+    bn_momentum: float = 0.1
+    bn_eps: float = 1e-5
 
 
 @dataclass
@@ -81,20 +83,28 @@ class TrainingConfig:
 
     dataset: Literal["mnist", "fashion_mnist", "cifar10"] = "fashion_mnist"
     epochs: int = 5
+    min_epochs: int = 1
     batch_size: int = 128
     eval_batch_size: int = 256
     learning_rate: float = 1e-3
     weight_decay: float = 0.0
     optimizer: Literal["adam", "sgd"] = "adam"
     momentum: float = 0.9
-    scheduler: Literal["none", "cosine", "step"] = "none"
+    scheduler: Literal["none", "cosine", "step", "onecycle"] = "none"
     step_size: int = 10
     gamma: float = 0.1
+    onecycle_pct_start: float = 0.3
+    onecycle_div_factor: float = 25.0
+    onecycle_final_div_factor: float = 1e4
     num_train_samples: Optional[int] = None
     num_test_samples: Optional[int] = None
     normalize_inputs: bool = True
     num_workers: int = 0
     label_smoothing: float = 0.0
+    target_train_accuracy: Optional[float] = None
+    target_patience: int = 1
+    target_metric: Literal["train_accuracy", "eval_train_accuracy"] = "train_accuracy"
+    log_every_epoch: bool = False
 
 
 @dataclass

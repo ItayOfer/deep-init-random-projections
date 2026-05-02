@@ -248,6 +248,62 @@ W_i = W_i * target_std_l / std(W_i)
 - Uses standard He base variance for better backward stability
 - Designed to test whether a depth-aware schedule can help without the var-adj backward inflation
 
+### 17. `row_centered_product_balanced` -- Gradient-Product-Balanced Row Centering
+
+**Formula:**
+```
+v* = 2 · √(π/(π-1)) ≈ 2.4224
+target_std = √(v*/d)
+
+W ~ N(0, target_std)
+W_i = W_i - mean(W_i)
+W_i = W_i * target_std / std(W_i)
+```
+
+**Motivation:** From BP4, the gradient at layer l satisfies ||∂C/∂W^(l)|| ∝ rms(A^{l-1}) · rms(Δ^l). The forward gain g_fwd and backward gain g_bwd are coupled by the structural ratio g_fwd/g_bwd = r = √((π-1)/π) ≈ 0.826. Instead of trying to make either gain individually equal to 1 (which forces the other away from 1), we choose the variance that makes their **product** equal to 1:
+
+```
+g_fwd · g_bwd = r · s² = 1  ⟹  s* = (π/(π-1))^{1/4}  ⟹  v* = 2·√(π/(π-1))
+```
+
+This gives g_fwd = ((π-1)/π)^{1/4} ≈ 0.909 and g_bwd = (π/(π-1))^{1/4} ≈ 1.101.
+
+**Properties:**
+- Full row centering (Σ_j W_{ij} = 0)
+- g_fwd · g_bwd = 1.0 exactly — the unique "fixed point" between vanishing (var_adj) and exploding (fwd_balanced)
+- Gradient spread across layers is still r^{-(L-1)} (same as any uniform RC variant)
+- Minimizes dynamic range of both activations AND error signals simultaneously (127× at L=50 vs 14,000× for var_adj or fwd_balanced)
+- Makes the geometric mean of gradient norms depth-independent
+- Optimal base for the layer-balanced scheme
+
+### 18. `row_centered_layer_balanced_product_base` -- Layer-Balanced with Product-Balanced Base
+
+**Formula:**
+```
+r  = √((π-1)/π) ≈ 0.826
+s* = (π/(π-1))^{1/4} ≈ 1.1006
+s_l = s* · r^{η·(l - (L+1)/2)}          (1-indexed)
+target_std_l = √(2/d) · s_l
+
+W ~ N(0, target_std_l)
+W_i = W_i - mean(W_i)
+W_i = W_i * target_std_l / std(W_i)
+```
+
+**Motivation:** Combines the product-balanced base (g_fwd · g_bwd = 1, minimizing dynamic range) with per-layer variance scaling to achieve gradient uniformity. The product-balanced base is the natural midpoint between the He base (too much forward decay) and the fwd-balanced base (too much backward amplification).
+
+**Parameters:**
+- `layer_index`: 0-based layer position
+- `n_layers`: total number of weight layers
+- `eta`: correction strength (0 = uniform product-balanced, 1 = full balance). Default 1.0.
+
+**Properties:**
+- Full row centering → same geometry as all RC variants
+- At η=0: reduces to `row_centered_product_balanced` (uniform)
+- At η=1: full gradient uniformity with moderate backward amplification
+- Average backward gain ≈ 1.101 (vs 1.211 for fwd-balanced base, 1.0 for He base)
+- This is the **recommended recipe** for arbitrary architectures: given (d₀, ..., d_L), compute per-layer target_std from the formula above
+
 ---
 
 ## Utility Initializer
@@ -279,3 +335,5 @@ W_ij ~ N(mean, sqrt(variance))
 | `row_centered_forward_balanced` | Yes | Yes (2.934/d) | Yes | Diagnostic only |
 | `row_centered_layer_balanced` | Yes | Yes (per-layer) | Yes | Geometry + gradient balance |
 | `row_centered_layer_balanced_he_base` | Yes | Yes (He base + per-layer) | Yes | Backward-aware row-centered test |
+| `row_centered_product_balanced` | Yes | Yes (2.422/d) | Yes | Product g_fwd·g_bwd = 1 |
+| `row_centered_layer_balanced_product_base` | Yes | Yes (product base + per-layer) | Yes | **Recommended recipe** |

@@ -1,0 +1,137 @@
+% ══════════════════════════════════════════════════════════════════
+\chapter{Conclusions and Open Questions}
+\label{ch:conclusions}
+% ══════════════════════════════════════════════════════════════════
+
+% ──────────────────────────────────────────────────────────────────
+\section{Summary of Proven Results}
+
+\begin{enumerate}
+  \item \textbf{The gradient trap is structural}
+        (Chapter~\ref{ch:gradient_trap}).
+        Row centering creates a forward gain of
+        $\sqrt{(\pi-1)/\pi} \approx 0.826$ per layer, with a locked
+        forward/backward ratio of $0.827$.  This was confirmed
+        empirically (single-sample experiments reproduce the same
+        pattern; variance sweep shows constant ratio across all
+        variance factors).  No scalar variance adjustment can make
+        both gains equal to~1 simultaneously.
+
+  \item \textbf{Row centering destroys class structure at depth}
+        (Chapter~\ref{ch:geometry}).
+        Using $k$-NN accuracy as the geometry metric,
+        \texttt{row\_centered\_he\_var\_adj} drops to chance level
+        (0.110) by 20 layers.  Standard He stays at 0.639.
+        The PCA scatter plots that previously suggested geometry
+        preservation were measuring \emph{spread}, not
+        \emph{structure}.
+
+  \item \textbf{Forward decay kills both geometry and gradients}
+        (Chapters~\ref{ch:gradient_trap}--\ref{ch:geometry}).
+        These are the same phenomenon: the $0.826^L$ signal decay
+        randomizes activations at depth (destroying class
+        information) and creates non-uniform gradients (preventing
+        learning).
+
+  \item \textbf{Partial centering and layer-balanced are partial fixes}
+        (Chapter~\ref{ch:fixing_trap}).
+        The alpha sweep reveals a Pareto frontier with no escape.
+        The layer-balanced approach ($\eta = 0.5$) reduces gradient
+        ratio from $11\times$ to $4\times$ while keeping full geometry,
+        but the backward gain of 1.21 limits further improvement.
+
+  \item \textbf{Negative bias cannot fix the kernel}
+        (Section~\ref{sec:biased_relu}).
+        Optimal $\beta^* \approx -0.93$ reduces distortion by only 13\%,
+        at the cost of 82\% silent neurons and $5.7\times$ variance
+        compensation.  No pointwise nonlinearity can fully preserve
+        the input kernel.
+
+  \item \textbf{The kernel-preserving optimizer confirms centering is
+        wrong} (Section~\ref{sec:kp_analysis}).
+        The optimizer discovers the \emph{opposite} of row centering
+        (large row sums, inflated weights, anisotropic structure), but
+        this solution is non-composable across layers.
+
+  \item \textbf{Two different collapse modes}
+        (Chapter~\ref{ch:angle_map}).
+        He collapses to $0^\circ$ (identity: all vectors align).
+        Row-centered collapses to $71^\circ$ (equidistance: all
+        vectors become equidistant).
+        Both destroy class information, but He preserves
+        \emph{ordering} (which $k$-NN needs) while row-centered
+        destroys it.
+
+  \item \textbf{Orthogonal\_he is the practical winner}
+        (Section~\ref{sec:orthogonal_analysis}).
+        It achieves $k$-NN $= 0.662$ at 20 layers (vs.\ He's 0.639),
+        a $\sim\!3.6\%$ improvement from reduced variance, with no
+        gradient trap.
+\end{enumerate}
+
+% ──────────────────────────────────────────────────────────────────
+\section{The Real Enemy: $D(\alpha) > 0$}
+
+The systematic ReLU kernel distortion
+\[
+  D(\alpha) = \frac{1}{\pi}\bigl(\sin\alpha - \alpha\cos\alpha\bigr) > 0
+  \quad\text{for all } \alpha \in (0,\pi)
+\]
+affects \textbf{all} initializers.  No single-layer weight structure
+can eliminate it:
+\begin{itemize}
+  \item The distortion depends on the normalized kernel
+        $\hat{K}(\alpha) = K(\alpha)/K(0)$, which is invariant to
+        weight scaling.
+  \item Orthogonal matrices have the same marginal distribution as
+        Gaussian, so the same $\hat{K}$.
+  \item Row centering changes the effective kernel but introduces worse
+        problems (forward decay, equidistance collapse).
+  \item Negative bias reshapes $D_\beta(\alpha)$ but cannot make it
+        zero everywhere.
+  \item The kernel-preserving optimizer finds a complex solution that
+        works per-layer but is non-composable.
+\end{itemize}
+
+This distortion is \textbf{fundamental to any pointwise nonlinearity}:
+the operation
+$\E[\phi(\bm{w}^\top \bm{x}_i) \cdot \phi(\bm{w}^\top \bm{x}_j)]$
+cannot equal $\langle \bm{x}_i, \bm{x}_j \rangle$ for all angles
+unless $\phi$ is linear.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Open Questions}
+
+\begin{enumerate}
+  \item \textbf{Reframing row centering in the thesis.}
+        The advisor proposed row centering specifically for geometry
+        preservation.  Our results show it is worse than standard He
+        for class separability.  How should we present this finding
+        diplomatically while being scientifically rigorous?
+
+  \item \textbf{Pivoting toward bounding the distortion.}
+        If the kernel distortion cannot be eliminated, perhaps the
+        thesis contribution is proving this impossibility and
+        characterizing the best achievable bounds.  What is the
+        optimal single-layer angle map achievable by any weight
+        structure?
+
+  \item \textbf{Multi-layer or joint optimization.}
+        The kernel-preserving optimizer fails because each layer is
+        optimized independently.  Could jointly optimizing all layers
+        (accounting for cumulative kernel drift) produce a composable
+        solution?
+
+  \item \textbf{Alternative activation functions.}
+        The distortion $D(\alpha) > 0$ is specific to ReLU.
+        Activation functions with $\E[\phi(z)] = 0$ (e.g., centered
+        ReLU, GELU minus its mean, or antisymmetric activations) would
+        eliminate the DC problem that drives the row-centering failure.
+        Do they also reduce the kernel distortion?
+
+  \item \textbf{Practical implications.}
+        For networks trained with gradient descent (not just random
+        projections), does the initialization-time geometry matter?
+        The gradient trap prevents early learning, but adaptive
+        optimizers (Adam, LARS) may compensate.
+\end{enumerate}

@@ -1,0 +1,431 @@
+% ══════════════════════════════════════════════════════════════════
+\chapter{Initialization Strategies}
+\label{ch:initializers}
+% ══════════════════════════════════════════════════════════════════
+
+All initializers are defined for a weight matrix
+$W \in \R^{d_{\mathrm{out}} \times d_{\mathrm{in}}}$
+(the layout of \texttt{nn.Linear} in PyTorch, where each \emph{row}
+is the weight vector of one output neuron).
+We write $d = d_{\mathrm{in}}$ throughout (the number of input
+connections per neuron).
+
+% ──────────────────────────────────────────────────────────────────
+\section{Baselines}
+
+\noindent
+These are standard initializers from the literature, providing
+reference points for our analysis.
+
+\subsection{He (Kaiming) initialization~\cite{he2015delving}}
+\label{sec:init_he}
+
+\begin{equation}\label{eq:he}
+  W_{ij} \sim \mathcal{N}\!\left(0,\; \frac{2}{d}\right),
+  \qquad\text{i.e.}\quad
+  \sigma_W = \sqrt{\frac{2}{d}}.
+\end{equation}
+Derived by requiring $\E[(a^{(l)})^2] = \E[(a^{(l-1)})^2]$
+under ReLU activation (see He et al., 2015, for the full derivation).
+
+\subsection{Xavier (Glorot) initialization~\cite{glorot2010understanding}}
+
+\begin{equation}
+  W_{ij} \sim \mathcal{N}\!\left(0,\; \frac{2}{d_{\mathrm{in}} + d_{\mathrm{out}}}\right).
+\end{equation}
+Designed for linear/sigmoid/tanh activations; does not account for
+ReLU's halving effect.  Included as a reference baseline.
+
+\subsection{Uniform He}
+
+\begin{equation}
+  W_{ij} \sim \mathcal{U}(-a, a), \qquad a = \sqrt{\frac{6}{d}},
+\end{equation}
+so that $\Var(W_{ij}) = a^2/3 = 2/d$, matching He variance with a
+uniform distribution.
+
+\subsection{Orthogonal (generic)}
+
+\begin{equation}
+  W = g \cdot Q, \qquad Q \text{ from QR decomposition of }
+  G \sim \mathcal{N}(0,1)^{d_{\mathrm{out}} \times d_{\mathrm{in}}}.
+\end{equation}
+The matrix $Q$ is obtained from the QR decomposition of a random
+Gaussian matrix $G$, ensuring its rows form an orthonormal set.
+The gain parameter $g$ scales all entries uniformly: $g = 1$ gives
+unit-norm rows, $g = \sqrt{2}$ gives He-scaled rows
+(see \texttt{orthogonal\_he} in Section~\ref{sec:orthogonal_family}).
+This generic form is not used directly in our experiments ---
+we use \texttt{orthogonal\_he} ($g = \sqrt{2}$) instead.
+We define it here as the base construction.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Row-Centered Family}
+
+\noindent
+Row centering was proposed to combat geometric collapse: by making
+each neuron blind to the mean of its inputs, the hope was to reduce
+the DC drift that accelerates angle contraction under the arc-cosine
+kernel.  This family explores the consequences of that constraint.
+
+\begin{definition}[Row centering]
+\label{def:row_centering}
+Given a weight matrix $W$, the \emph{row-centered} version is
+\[
+  \tilde{W}_{ij} = W_{ij} - \frac{1}{d}\sum_{k=1}^{d} W_{ik},
+\]
+so that each row sums to zero: $\sum_j \tilde{W}_{ij} = 0$ for all~$i$.
+Here $d = d_{\mathrm{in}}$ is the number of input connections per neuron
+(i.e., the length of each row).
+\end{definition}
+
+\textbf{Motivation.}  When row sums are zero, the neuron output
+$z_i = \sum_j W_{ij} a_j$ can be rewritten as follows.
+Split each activation into its mean plus deviation:
+$a_j = \bar{a} + (a_j - \bar{a})$, where
+$\bar{a} = \frac{1}{d}\sum_j a_j$ is the mean activation.
+Then:
+\begin{align}
+  z_i &= \sum_j W_{ij}\, a_j \notag \\
+      &= \sum_j W_{ij}\,\bar{a}
+         + \sum_j W_{ij}\,(a_j - \bar{a}) \notag \\
+      &= \bar{a}\,\underbrace{\sum_j W_{ij}}_{= \,0\;\text{(row centering)}}
+         + \sum_j W_{ij}\,(a_j - \bar{a}) \notag \\
+      &= \sum_j W_{ij}\,(a_j - \bar{a}).
+  \label{eq:rc_motivation}
+\end{align}
+The key point: we are \emph{not} adding $-\bar{a}$ by hand.
+We are splitting $a_j$ into mean plus deviation, and the mean term
+vanishes automatically because the row sums to zero.
+The result is that the neuron only sees the \emph{deviations} from
+the mean, not the mean itself.
+
+\subsection{\texttt{row\_centered\_he}}
+
+\begin{equation}
+  W_{ij}^{(\mathrm{He})} \sim \mathcal{N}(0, 2/d),
+  \qquad
+  W_{ij} = W_{ij}^{(\mathrm{He})} - \frac{1}{d}\sum_{k} W_{ik}^{(\mathrm{He})}.
+\end{equation}
+No variance correction.  Centering reduces the per-element variance by
+a factor of $(1 - 1/d)$:
+
+\begin{proof}[Proof of the variance reduction]
+Let $w_j \sim \mathcal{N}(0, \sigma^2)$ i.i.d.\ for $j = 1,\dots,d$.
+After centering: $\tilde{w}_j = w_j - \bar{w}$, where
+$\bar{w} = \frac{1}{d}\sum_k w_k$.  Then:
+\begin{align*}
+  \Var(\tilde{w}_j)
+  &= \Var(w_j - \bar{w})
+  = \Var(w_j) + \Var(\bar{w}) - 2\,\Cov(w_j, \bar{w}).
+\end{align*}
+Now $\Var(\bar{w}) = \sigma^2/d$ (variance of the mean of $d$
+i.i.d.\ variables).  And:
+\[
+  \Cov(w_j, \bar{w})
+  = \Cov\!\left(w_j,\; \frac{1}{d}\sum_{k=1}^{d} w_k\right)
+  = \frac{1}{d}\,\Var(w_j)
+  = \frac{\sigma^2}{d},
+\]
+since $w_j$ is independent of all $w_k$ with $k \neq j$.
+Therefore:
+\[
+  \Var(\tilde{w}_j)
+  = \sigma^2 + \frac{\sigma^2}{d} - 2\,\frac{\sigma^2}{d}
+  = \sigma^2\!\left(1 - \frac{1}{d}\right).
+  \qedhere
+\]
+\end{proof}
+
+\noindent
+Geometrically, centering projects each row onto the hyperplane
+orthogonal to $\bm{1}$, removing one degree of freedom out of $d$.
+
+\subsection{\texttt{row\_centered\_he\_var\_adj}}
+\label{sec:rc_var_adj}
+
+\begin{enumerate}
+  \item Sample $W^{(\mathrm{He})} \sim \mathcal{N}(0, 2/d)$.
+  \item Center each row: $\tilde{\bm{w}}_i = \bm{w}_i - \bar{w}_i \bm{1}$.
+  \item Rescale each row to restore He variance:
+        $\bm{w}_i \leftarrow \tilde{\bm{w}}_i \cdot
+        \sqrt{2/d}\,/\,\operatorname{std}(\tilde{\bm{w}}_i)$.
+\end{enumerate}
+
+\textbf{Why the rescaling (step~3).}
+After centering, each row has per-element standard deviation
+$\approx \sigma_W\sqrt{1 - 1/d}$ (from the variance reduction above).
+For $d = 784$, this is $\sigma_W \cdot 0.9994$ --- nearly identical,
+but the rescaling ensures \emph{exactly} $\Var(W_{ij}) = 2/d$
+(matching He).  Each row is divided by its empirical standard deviation
+and multiplied by $\sqrt{2/d}$.
+The result: centered rows (sum to zero) with exactly He variance.
+
+\subsection{\texttt{row\_centered\_forward\_balanced} (diagnostic)}
+\label{sec:rc_fwd_balanced}
+
+\textbf{Motivation.}
+In Chapter~\ref{ch:gradient_trap}, we show that row centering causes
+a forward gain of $\sqrt{(\pi-1)/\pi} \approx 0.826$ per layer.
+A natural question: \emph{can we simply increase the weight variance
+to compensate?}  This initializer answers that question.
+
+\textbf{Derivation.}
+For a row-centered layer with variance $\Var(W_{ij}) = v$, the forward
+gain is (from Chapter~\ref{ch:gradient_trap}):
+\[
+  g_{\mathrm{fwd}} = \sqrt{v \cdot \frac{d}{2} \cdot \frac{\pi-1}{\pi}}.
+\]
+Setting $g_{\mathrm{fwd}} = 1$ and solving for $v$:
+\[
+  v \cdot \frac{d}{2} \cdot \frac{\pi-1}{\pi} = 1
+  \quad\Longrightarrow\quad
+  v = \frac{2\pi}{(\pi-1)\,d} \approx \frac{2.934}{d}.
+\]
+So the required weight variance is:
+\begin{equation}\label{eq:fwd_balanced_var}
+  \Var(W_{ij}) = \frac{2\pi}{(\pi-1)\,d}.
+\end{equation}
+
+\textbf{Result.}
+This is a \textbf{diagnostic} initializer: it proves that forcing
+the forward gain to~$1.0$ pushes the backward gain to
+$\sqrt{\pi/(\pi-1)} \approx 1.21$, causing backward explosion
+($1.21^{50} \approx 1.3 \times 10^4$).
+You cannot fix one direction without breaking the other
+(Section~\ref{sec:fwd_bwd_coupling}).
+
+\subsection{\texttt{row\_centered\_layer\_balanced}}
+\label{sec:layer_balanced}
+
+\textbf{Motivation.}
+Instead of using the same weight variance at every layer, we use a
+\emph{per-layer variance schedule} $\sigma_l$ that partially
+compensates for the cumulative forward decay.
+
+\textbf{Definition.}
+\begin{equation}\label{eq:layer_balanced}
+  \sigma_l = \sigma_{\mathrm{base}} \cdot r^{\,\eta\,(l - (L+1)/2)},
+  \qquad
+  \sigma_{\mathrm{base}} = \sqrt{\frac{2}{d}} \cdot \sqrt{\frac{\pi}{\pi-1}},
+\end{equation}
+where $r = \sqrt{(\pi-1)/\pi}$, $l \in \{1,\dots,L\}$ is the layer
+index, $L$ is the total number of layers, and $\eta \in [0,1]$ controls
+the correction strength.
+
+Each layer's weight matrix is sampled $W \sim \mathcal{N}(0, \sigma_l)$,
+then row-centered and rescaled to have per-row standard deviation
+$\sigma_l$.
+
+\textbf{Intuition.}
+The parameter $\eta$ controls how much per-layer compensation to apply:
+\begin{itemize}
+  \item $\eta = 0$: uniform variance across layers, same as
+        \texttt{forward\_balanced} (forward gain~$\approx 1.0$,
+        backward gain~$\approx 1.21$ at every layer).
+  \item $\eta = 1$: full per-layer correction, with early layers
+        getting smaller variance and later layers getting larger
+        variance to fight cumulative decay.
+  \item Intermediate $\eta$: a partial correction.
+\end{itemize}
+
+\begin{flagbox}
+  The base standard deviation $\sigma_{\mathrm{base}}$ includes the
+  $\sqrt{\pi/(\pi-1)}$ factor, which is the \textbf{forward-balanced}
+  correction (Section~\ref{sec:rc_fwd_balanced}), not the variance-adjusted
+  base.  Consequently, at $\eta = 0$ this initializer gives:
+  \begin{itemize}
+    \item Forward gain $\approx 1.0$ (not~$0.826$)
+    \item Backward gain $\approx 1.21$ (not~$1.0$)
+  \end{itemize}
+  This differs from \texttt{row\_centered\_he\_var\_adj}, which at the
+  same depth would give forward gain~$\approx 0.826$ and backward
+  gain~$\approx 1.0$.  The distinction matters when interpreting the
+  $\eta$-sweep results in Section~\ref{sec:eta_sweep}.
+\end{flagbox}
+
+The full mathematical derivation of why this scheme partially equalizes
+gradients is given in Section~\ref{sec:eta_sweep}.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Partial Centering}
+
+\noindent
+Since full row centering creates a gradient trap
+(Chapter~\ref{ch:gradient_trap}), a natural follow-up:
+\emph{what if we only partially center?}
+This family interpolates between He (no centering, good gradients)
+and full row centering (geometry-motivated, but trapped gradients).
+
+\subsection{\texttt{partial\_centered\_he}}
+
+\begin{equation}\label{eq:partial}
+  W_{ij} = W_{ij}^{(\mathrm{He})}
+           - \alpha \cdot \frac{1}{d}\sum_{k} W_{ik}^{(\mathrm{He})},
+\end{equation}
+followed by rescaling each row to restore He variance.
+
+The parameter $\alpha \in [0,1]$ interpolates between pure He
+($\alpha = 0$, no centering) and full row centering ($\alpha = 1$).
+At intermediate $\alpha$, the row sums are reduced but not zero:
+$\sum_j W_{ij} = (1-\alpha)\sum_j W_{ij}^{(\mathrm{He})}$.
+
+Default: $\alpha = 0.5$.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Orthogonal Family}
+\label{sec:orthogonal_family}
+
+\noindent
+Orthogonal initialization preserves norms exactly in the linear part
+of the forward pass (before the nonlinearity).  Combined with He
+scaling, it provides the benefits of structured weights without the
+zero-sum constraint that causes the gradient trap.
+
+\subsection{\texttt{orthogonal\_he}}
+
+\begin{equation}
+  W = \sqrt{2} \cdot Q, \qquad Q \text{ orthogonal from QR}.
+\end{equation}
+The gain $\sqrt{2}$ matches He scaling: since ReLU zeroes ${\sim}50\%$
+of outputs, the factor of~2 compensates for the halving.
+Orthogonal rows are linearly independent but do \textbf{not} have
+the zero-sum constraint, so there is no gradient trap.
+
+\subsection{\texttt{orthogonal\_tuned}}
+
+\begin{equation}
+  W = \sqrt{1.65} \cdot Q.
+\end{equation}
+Uses the tuned factor $1.65$ instead of~$2$.
+
+In our experiments (Section~\ref{sec:orthogonal_analysis}),
+\texttt{orthogonal\_tuned} produces \textbf{identical results} to
+\texttt{orthogonal\_he} on all scale-invariant metrics ($k$-NN
+accuracy, distance correlation).  This is because for square matrices
+with the same random seed, the QR decomposition produces the same
+orthogonal matrix $Q$; only the scalar gain differs, which does not
+affect angle-based or rank-based metrics.
+We include it for completeness but focus on \texttt{orthogonal\_he}
+in our analysis.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Experimental Initializers}
+
+\noindent
+These are exploratory approaches that test specific hypotheses about
+fixing the gradient trap or the kernel distortion.
+
+\subsection{\texttt{centered\_with\_dc\_he}}
+
+\begin{enumerate}
+  \item Sample and center as in \texttt{row\_centered\_he\_var\_adj}.
+  \item Add a constant DC offset to every element:
+        \[
+          W_{ij} \leftarrow W_{ij} + \delta \cdot \sqrt{2/d},
+          \qquad \delta = 0.1 \text{ (default)}.
+        \]
+\end{enumerate}
+This breaks the zero-sum constraint
+($\sum_j W_{ij} = d \cdot \delta \sqrt{2/d} \neq 0$)
+while preserving most of the centering benefit.
+
+\subsection{\texttt{kernel\_preserving}}
+\label{sec:kp_init}
+
+This initializer directly minimizes the kernel distortion via
+optimization.  Starting from He initialization, it runs 200~Adam steps
+(learning rate 0.01) on the objective:
+\begin{equation}\label{eq:kp_objective}
+  \min_W \;
+  \sum_{i,j}
+  \left(
+    \frac{\langle \relu(W\bm{x}_i),\, \relu(W\bm{x}_j)\rangle}{d_{\mathrm{out}}}
+    - \langle \bm{x}_i, \bm{x}_j \rangle
+  \right)^{\!2}
+  + \lambda
+  \sum_i
+  \left(
+    \frac{\|\relu(W\bm{x}_i)\|^2}{d_{\mathrm{out}}} - 1
+  \right)^{\!2},
+\end{equation}
+where $\{\bm{x}_i\}$ are 500 random unit vectors (data-independent
+proxy) and $\lambda = 1.0$.
+
+\begin{flagbox}
+  \textbf{Normalization artifact.}
+  Both terms in~\eqref{eq:kp_objective} are divided by
+  $d_{\mathrm{out}}$.  The norm constraint therefore asks for
+  $\|\relu(W\bm{x})\|^2 / d_{\mathrm{out}} \approx 1$, i.e.,
+  the optimizer targets output vectors of length
+  $\|\relu(W\bm{x})\| \approx \sqrt{d_{\mathrm{out}}}$.
+  For our layer width $d = 784$, this means
+  $\sqrt{784} = 28$, not~$1$.
+
+  When we later observe (Section~\ref{sec:kp_analysis}) that the
+  optimized weights are ``$11.5\times$ inflated'' compared to He,
+  part of this inflation is simply because the optimizer is targeting
+  larger output norms than He does --- it is partly a normalization
+  artifact, not necessarily a meaningful structural difference.
+\end{flagbox}
+
+\subsection{\texttt{custom\_variance}}
+
+\begin{equation}
+  W_{ij} \sim \mathcal{N}(\mu, \sigma^2),
+\end{equation}
+with user-specified $\mu$ (default~0) and $\sigma^2$ (default $2/d$).
+Used for variance sweep experiments.
+
+% ──────────────────────────────────────────────────────────────────
+\section{Summary Table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+Initializer & Row sum $=0$? & Var adjusted? & Gradient trap? & Best for \\
+\midrule
+\texttt{he}                     & No      & N/A       & No      & Gradient baseline \\
+\texttt{xavier}                 & No      & N/A       & No      & Linear/tanh \\
+\texttt{uniform\_he}            & No      & N/A       & No      & Uniform baseline \\
+\midrule
+\texttt{row\_centered\_he}      & Yes     & No        & Yes     & Geometry baseline \\
+\texttt{rc\_he\_var\_adj}       & Yes     & Yes       & Yes     & Geom.\ + correct var \\
+\texttt{rc\_fwd\_balanced}      & Yes     & Yes (2.93)& Yes     & Diagnostic only \\
+\texttt{rc\_layer\_balanced}    & Yes     & Per-layer & Yes     & Geom.\ + grad.\ balance \\
+\midrule
+\texttt{partial\_centered\_he}  & Partial & Yes       & Partial & Trade-off \\
+\midrule
+\texttt{orthogonal\_he}         & No      & N/A       & No      & Geom.\ without trap \\
+\texttt{orthogonal\_tuned}      & No      & N/A       & No      & $\equiv$ orthogonal\_he \\
+\midrule
+\texttt{centered\_with\_dc}     & Nearly  & Yes       & Partial & Breaking the trap \\
+\texttt{kernel\_preserving}     & No      & Optimized & No      & Shallow geom. \\
+\texttt{custom\_variance}       & No      & Custom    & No      & Experiments \\
+\bottomrule
+\end{tabular}
+\caption{Summary of all initialization strategies.}
+\label{tab:init_summary}
+\end{table}
+
+\begin{remark}[Key initializers for discussion]
+The most important rows in this table are:
+\begin{itemize}
+  \item \textbf{\texttt{he}}: the standard baseline --- good gradients,
+        reasonable geometry.
+  \item \textbf{\texttt{rc\_he\_var\_adj}}: the advisor's proposal
+        with variance correction --- this is what we analyze in depth.
+  \item \textbf{\texttt{rc\_fwd\_balanced}}: diagnostic variant that
+        reveals the gradient trap coupling (Section~\ref{sec:fwd_bwd_coupling}).
+  \item \textbf{\texttt{orthogonal\_he}}: the practical winner ---
+        best geometry with no gradient trap
+        (Section~\ref{sec:orthogonal_analysis}).
+  \item \textbf{\texttt{kernel\_preserving}}: shows that direct
+        optimization finds the \emph{opposite} of centering
+        (Section~\ref{sec:kp_analysis}).
+\end{itemize}
+The remaining initializers are supporting experiments that help us
+understand the landscape of possible solutions.
+\end{remark}

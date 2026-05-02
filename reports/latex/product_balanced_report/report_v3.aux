@@ -1,0 +1,86 @@
+\relax 
+\providecommand\zref@newlabel[2]{}
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Goal and Motivation}{2}{section.1}\protected@file@percent }
+\newlabel{sec:motivation}{{1}{2}{Goal and Motivation}{section.1}{}}
+\newlabel{eq:bp4}{{1}{2}{Goal and Motivation}{equation.1}{}}
+\newlabel{eq:grad-mag}{{2}{2}{Goal and Motivation}{equation.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Forward and Backward Gains for Row-Centered Weights}{2}{section.2}\protected@file@percent }
+\newlabel{sec:gains}{{2}{2}{Forward and Backward Gains for Row-Centered Weights}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Setup and notation}{2}{subsection.2.1}\protected@file@percent }
+\newlabel{eq:s-def}{{3}{2}{Setup and notation}{equation.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Forward gain: why row centering loses signal}{2}{subsection.2.2}\protected@file@percent }
+\newlabel{sec:fwd-derivation}{{2.2}{2}{Forward gain: why row centering loses signal}{subsection.2.2}{}}
+\newlabel{eq:centering-ratio}{{4}{3}{Forward gain: why row centering loses signal}{equation.4}{}}
+\newlabel{eq:fwd-gain}{{5}{3}{Forward gain: why row centering loses signal}{equation.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Backward gain: why the backward pass is unaffected}{3}{subsection.2.3}\protected@file@percent }
+\newlabel{sec:bwd-derivation}{{2.3}{3}{Backward gain: why the backward pass is unaffected}{subsection.2.3}{}}
+\newlabel{eq:bwd-gain}{{6}{3}{Backward gain: why the backward pass is unaffected}{equation.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}The coupling}{3}{subsection.2.4}\protected@file@percent }
+\newlabel{eq:coupling}{{7}{3}{The coupling}{equation.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}The Product-Balanced Initializer}{3}{section.3}\protected@file@percent }
+\newlabel{sec:product-balanced}{{3}{3}{The Product-Balanced Initializer}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Derivation}{3}{subsection.3.1}\protected@file@percent }
+\newlabel{thm:product-balanced}{{3.1}{3}{Product-balanced variance}{theorem.3.1}{}}
+\newlabel{eq:s-star}{{8}{3}{Product-balanced variance}{equation.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Initialization procedure}{4}{subsection.3.2}\protected@file@percent }
+\newlabel{def:init-uniform}{{3.2}{4}{Product-balanced row-centered initialization}{theorem.3.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Per-Layer Variance Scaling: The $\eta $-Schedule}{4}{section.4}\protected@file@percent }
+\newlabel{sec:layer-balanced}{{4}{4}{Per-Layer Variance Scaling: The $\eta $-Schedule}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Derivation}{4}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:eta-derivation}{{4.1}{4}{Derivation}{subsection.4.1}{}}
+\newlabel{eq:gradient-formula}{{9}{4}{Derivation}{equation.9}{}}
+\newlabel{eq:gradient-simple}{{10}{4}{Derivation}{equation.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}The $\eta $-parameterization}{4}{subsection.4.2}\protected@file@percent }
+\newlabel{sec:eta-param}{{4.2}{4}{The $\eta $-parameterization}{subsection.4.2}{}}
+\newlabel{eq:eta-schedule}{{11}{4}{The $\eta $-parameterization}{equation.11}{}}
+\newlabel{def:init-layerbal}{{4.1}{4}{Layer-balanced product-base initialization}{theorem.4.1}{}}
+\newlabel{eq:target-std}{{12}{4}{Layer-balanced product-base initialization}{equation.12}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Empirical Validation (50 Hidden Layers)}{5}{section.5}\protected@file@percent }
+\newlabel{sec:empirical}{{5}{5}{Empirical Validation (50 Hidden Layers)}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Setup}{5}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Gain verification}{5}{subsection.5.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Per-layer gain comparison, 50 hidden layers.}}{5}{table.caption.2}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{tab:gains}{{1}{5}{Per-layer gain comparison, 50 hidden layers}{table.caption.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Forward gain per layer}{5}{subsection.5.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Forward gain per layer. Layer-balanced (green) sits between product-balanced and He.}}{5}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:fwd-gain}{{1}{5}{Forward gain per layer. Layer-balanced (green) sits between product-balanced and He}{figure.caption.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Backward gain per layer}{6}{subsection.5.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Backward gain per layer. Layer-balanced (green) has moderate backward gain $\approx 1.05$.}}{6}{figure.caption.4}\protected@file@percent }
+\newlabel{fig:bwd-gain}{{2}{6}{Backward gain per layer. Layer-balanced (green) has moderate backward gain $\approx 1.05$}{figure.caption.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Gain product per layer}{6}{subsection.5.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Gain product per layer. Product-balanced and layer-balanced both sit near~1.0.}}{6}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:gain-product}{{3}{6}{Gain product per layer. Product-balanced and layer-balanced both sit near~1.0}{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Gradient row norms}{7}{subsection.5.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Gradient row norms (log scale). He is nearly flat. Layer-balanced (green) has moderate slope. Uniform RC variants (red, purple) have steep decay.}}{7}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:grad-norms}{{4}{7}{Gradient row norms (log scale). He is nearly flat. Layer-balanced (green) has moderate slope. Uniform RC variants (red, purple) have steep decay}{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Geometry Preservation (k-NN Accuracy)}{7}{section.6}\protected@file@percent }
+\newlabel{sec:geometry}{{6}{7}{Geometry Preservation (k-NN Accuracy)}{section.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces k-NN accuracy vs.\ depth. Chance level $= 0.10$.}}{7}{table.caption.7}\protected@file@percent }
+\newlabel{tab:knn}{{2}{7}{k-NN accuracy vs.\ depth. Chance level $= 0.10$}{table.caption.7}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces k-NN accuracy vs.\ depth. All three RC variants are identical.}}{7}{figure.caption.8}\protected@file@percent }
+\newlabel{fig:knn}{{5}{7}{k-NN accuracy vs.\ depth. All three RC variants are identical}{figure.caption.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}The Pareto Frontier}{8}{section.7}\protected@file@percent }
+\newlabel{sec:pareto}{{7}{8}{The Pareto Frontier}{section.7}{}}
+\newlabel{thm:pareto}{{7.1}{8}{Pareto budget}{theorem.7.1}{}}
+\newlabel{eq:pareto}{{15}{8}{Pareto budget}{equation.15}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Pareto budget at various depths.}}{8}{table.caption.9}\protected@file@percent }
+\newlabel{tab:budget}{{3}{8}{Pareto budget at various depths}{table.caption.9}{}}
+\newlabel{eq:eta-adaptive}{{16}{8}{The Pareto Frontier}{equation.16}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Beyond Row Centering: What Are the Options?}{8}{section.8}\protected@file@percent }
+\newlabel{sec:beyond}{{8}{8}{Beyond Row Centering: What Are the Options?}{section.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}The ReLU kernel contraction: an intrinsic limit}{8}{subsection.8.1}\protected@file@percent }
+\newlabel{eq:kernel}{{17}{8}{The ReLU kernel contraction: an intrinsic limit}{equation.17}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Orthogonal He: the current practical winner}{9}{subsection.8.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}Batch normalization: a dynamic alternative}{9}{subsection.8.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.4}Summary of candidates}{9}{subsection.8.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Comparison of initialization approaches for deep ReLU networks.}}{9}{table.caption.10}\protected@file@percent }
+\newlabel{tab:candidates}{{4}{9}{Comparison of initialization approaches for deep ReLU networks}{table.caption.10}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{9}{section.9}\protected@file@percent }
+\newlabel{sec:conclusion}{{9}{9}{Conclusion}{section.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.1}Results}{9}{subsection.9.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {9.2}Next steps}{10}{subsection.9.2}\protected@file@percent }
+\gdef \@abspage@last{10}

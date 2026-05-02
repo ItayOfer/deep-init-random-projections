@@ -1,0 +1,38 @@
+[
+  {
+    "init_strategy": "he",
+    "depth": 1,
+    "overflow": false,
+    "knn_accuracy": 0.71875,
+    "distance_correlation": 0.9844313208988803,
+    "effective_dim": 18.523086547851562,
+    "effective_dim_original": 18.119653701782227
+  },
+  {
+    "init_strategy": "he",
+    "depth": 5,
+    "overflow": false,
+    "knn_accuracy": 0.6640625,
+    "distance_correlation": 0.8546247608608988,
+    "effective_dim": 17.951969146728516,
+    "effective_dim_original": 18.119653701782227
+  },
+  {
+    "init_strategy": "row_centered_he_var_adj",
+    "depth": 1,
+    "overflow": false,
+    "knn_accuracy": 0.7265625,
+    "distance_correlation": 0.8983995539214109,
+    "effective_dim": 27.38421630859375,
+    "effective_dim_original": 18.119653701782227
+  },
+  {
+    "init_strategy": "row_centered_he_var_adj",
+    "depth": 5,
+    "overflow": false,
+    "knn_accuracy": 0.625,
+    "distance_correlation": 0.7196320356239834,
+    "effective_dim": 59.12391662597656,
+    "effective_dim_original": 18.119653701782227
+  }
+]

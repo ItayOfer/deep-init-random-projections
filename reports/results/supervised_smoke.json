@@ -1,0 +1,198 @@
+[
+  {
+    "classifier_config": {
+      "architecture": "fc",
+      "depth": 50,
+      "init_strategy": "he",
+      "init_kwargs": {},
+      "use_batch_norm": false,
+      "use_bias": true,
+      "num_classes": 10,
+      "fc_input_dim": 784,
+      "fc_hidden_dim": 512,
+      "cnn_input_channels": 1,
+      "cnn_base_channels": 32,
+      "cnn_max_channels": 256
+    },
+    "training_config": {
+      "dataset": "fashion_mnist",
+      "epochs": 1,
+      "batch_size": 64,
+      "eval_batch_size": 64,
+      "learning_rate": 0.001,
+      "weight_decay": 0.0,
+      "optimizer": "adam",
+      "momentum": 0.9,
+      "scheduler": "none",
+      "step_size": 10,
+      "gamma": 0.1,
+      "num_train_samples": 256,
+      "num_test_samples": 128,
+      "normalize_inputs": false,
+      "num_workers": 0,
+      "label_smoothing": 0.0
+    },
+    "status": "completed",
+    "best_epoch": 1,
+    "best_test_accuracy": 0.1328125,
+    "final_train_accuracy": 0.05859375,
+    "final_test_accuracy": 0.1328125,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 2.660060465335846,
+        "train_accuracy": 0.05859375,
+        "test_loss": 2.290291428565979,
+        "test_accuracy": 0.1328125
+      }
+    ],
+    "parameter_count": 13277194
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc",
+      "depth": 50,
+      "init_strategy": "he",
+      "init_kwargs": {},
+      "use_batch_norm": true,
+      "use_bias": true,
+      "num_classes": 10,
+      "fc_input_dim": 784,
+      "fc_hidden_dim": 512,
+      "cnn_input_channels": 1,
+      "cnn_base_channels": 32,
+      "cnn_max_channels": 256
+    },
+    "training_config": {
+      "dataset": "fashion_mnist",
+      "epochs": 1,
+      "batch_size": 64,
+      "eval_batch_size": 64,
+      "learning_rate": 0.001,
+      "weight_decay": 0.0,
+      "optimizer": "adam",
+      "momentum": 0.9,
+      "scheduler": "none",
+      "step_size": 10,
+      "gamma": 0.1,
+      "num_train_samples": 256,
+      "num_test_samples": 128,
+      "normalize_inputs": false,
+      "num_workers": 0,
+      "label_smoothing": 0.0
+    },
+    "status": "completed",
+    "best_epoch": 1,
+    "best_test_accuracy": 0.078125,
+    "final_train_accuracy": 0.0859375,
+    "final_test_accuracy": 0.078125,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 2.6476242542266846,
+        "train_accuracy": 0.0859375,
+        "test_loss": 2.320520520210266,
+        "test_accuracy": 0.078125
+      }
+    ],
+    "parameter_count": 13302794
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc",
+      "depth": 50,
+      "init_strategy": "row_centered_he",
+      "init_kwargs": {},
+      "use_batch_norm": false,
+      "use_bias": true,
+      "num_classes": 10,
+      "fc_input_dim": 784,
+      "fc_hidden_dim": 512,
+      "cnn_input_channels": 1,
+      "cnn_base_channels": 32,
+      "cnn_max_channels": 256
+    },
+    "training_config": {
+      "dataset": "fashion_mnist",
+      "epochs": 1,
+      "batch_size": 64,
+      "eval_batch_size": 64,
+      "learning_rate": 0.001,
+      "weight_decay": 0.0,
+      "optimizer": "adam",
+      "momentum": 0.9,
+      "scheduler": "none",
+      "step_size": 10,
+      "gamma": 0.1,
+      "num_train_samples": 256,
+      "num_test_samples": 128,
+      "normalize_inputs": false,
+      "num_workers": 0,
+      "label_smoothing": 0.0
+    },
+    "status": "completed",
+    "best_epoch": 1,
+    "best_test_accuracy": 0.1328125,
+    "final_train_accuracy": 0.09765625,
+    "final_test_accuracy": 0.1328125,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 2.319389820098877,
+        "train_accuracy": 0.09765625,
+        "test_loss": 2.2924938201904297,
+        "test_accuracy": 0.1328125
+      }
+    ],
+    "parameter_count": 13277194
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc",
+      "depth": 50,
+      "init_strategy": "row_centered_he",
+      "init_kwargs": {},
+      "use_batch_norm": true,
+      "use_bias": true,
+      "num_classes": 10,
+      "fc_input_dim": 784,
+      "fc_hidden_dim": 512,
+      "cnn_input_channels": 1,
+      "cnn_base_channels": 32,
+      "cnn_max_channels": 256
+    },
+    "training_config": {
+      "dataset": "fashion_mnist",
+      "epochs": 1,
+      "batch_size": 64,
+      "eval_batch_size": 64,
+      "learning_rate": 0.001,
+      "weight_decay": 0.0,
+      "optimizer": "adam",
+      "momentum": 0.9,
+      "scheduler": "none",
+      "step_size": 10,
+      "gamma": 0.1,
+      "num_train_samples": 256,
+      "num_test_samples": 128,
+      "normalize_inputs": false,
+      "num_workers": 0,
+      "label_smoothing": 0.0
+    },
+    "status": "completed",
+    "best_epoch": 1,
+    "best_test_accuracy": 0.109375,
+    "final_train_accuracy": 0.109375,
+    "final_test_accuracy": 0.109375,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 2.558354377746582,
+        "train_accuracy": 0.109375,
+        "test_loss": 2.3083336353302,
+        "test_accuracy": 0.109375
+      }
+    ],
+    "parameter_count": 13302794
+  }
+]

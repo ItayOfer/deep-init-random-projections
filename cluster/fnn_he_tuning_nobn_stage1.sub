@@ -1,0 +1,43 @@
+#!/bin/bash
+#SBATCH --job-name=fnn_he_nobn_tune
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=dgx01
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=18:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/run_supervised_sweep.py \
+    --datasets cifar10,fashion_mnist \
+    --architectures fc \
+    --depths 30,50,100 \
+    --init-strategies he \
+    --batch-norm false \
+    --fc-hidden-dim 500 \
+    --epochs 60 \
+    --min-epochs 20 \
+    --eval-batch-size 256 \
+    --device cuda \
+    --normalize-inputs \
+    --target-train-accuracy 0.995 \
+    --target-patience 3 \
+    --target-metric eval_train_accuracy \
+    --nobn-optimizers adam,sgd \
+    --nobn-adam-lrs 3e-4,1e-3 \
+    --nobn-sgd-lrs 1e-2,3e-2 \
+    --nobn-schedulers none,cosine \
+    --nobn-weight-decays 0 \
+    --nobn-batch-sizes 128 \
+    --sgd-momentums 0.9 \
+    --output reports/results/fnn_he_tuning_nobn_sweep.json \
+    --best-output reports/results/fnn_he_tuning_nobn_best.json"
