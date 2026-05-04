@@ -103,7 +103,7 @@ class TrainingConfig:
     label_smoothing: float = 0.0
     target_train_accuracy: Optional[float] = None
     target_patience: int = 1
-    target_metric: Literal["train_accuracy", "eval_train_accuracy"] = "train_accuracy"
+    target_metric: Literal["train_accuracy", "eval_train_accuracy"] = "eval_train_accuracy"
     log_every_epoch: bool = False
 
 
