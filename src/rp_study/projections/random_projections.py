@@ -215,6 +215,7 @@ def multi_layer_rp_with_init(
     seed: Optional[int] = None,
     device: Optional[Union[str, torch.device]] = None,
     use_bias: bool = False,
+    use_batch_norm: bool = False,
     **init_kwargs,
 ) -> np.ndarray:
     """Apply multi-layer RP + ReLU using registry initializers.
@@ -234,11 +235,19 @@ def multi_layer_rp_with_init(
         use_bias: Whether to create layers with bias. When True, the
             initializer is responsible for setting the bias values.
             Required for negative-bias initializers.
+        use_batch_norm: When True, inserts ``nn.BatchNorm1d(width, affine=False)``
+            between Linear and ReLU at every layer. BN runs in train() mode
+            so it uses *batch statistics* from the current sample — which is
+            deterministic given a fixed deterministic input sample. The
+            affine parameters are disabled, so BN is pure mean/variance
+            normalization with no learnable scale/shift. Used to model the
+            BN-at-init behaviour in geometry experiments that compare BN
+            vs initializer-only geometry preservation.
         **init_kwargs: Extra kwargs passed to the initializer (e.g., alpha=0.5).
 
     Returns:
         Transformed numpy array of shape (n_samples, width) after n_layers
-        of (Linear + ReLU).
+        of (Linear [+ BN] + ReLU).
     """
     import torch.nn as nn
     from ..models.initializers import initialize_layer
@@ -272,12 +281,19 @@ def multi_layer_rp_with_init(
             n_layers=n_layers,
             **init_kwargs,
         )
+        bn = None
+        if use_batch_norm:
+            bn = nn.BatchNorm1d(w, affine=False).to(dev)
+            bn.train()
         # Forward pass doesn't need gradients
         with torch.no_grad():
             if use_bias:
-                X_tensor = torch.relu(X_tensor @ layer.weight.t() + layer.bias)
+                Z = X_tensor @ layer.weight.t() + layer.bias
             else:
-                X_tensor = torch.relu(X_tensor @ layer.weight.t())
+                Z = X_tensor @ layer.weight.t()
+            if bn is not None:
+                Z = bn(Z)
+            X_tensor = torch.relu(Z)
         current_dim = w
 
     return X_tensor.cpu().numpy()

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Run a conditional hyperparameter sweep and select best configs per architecture."""
+"""Run a conditional hyperparameter sweep and select best configs per architecture.
+
+Supports incremental saving (results written after every run) and --resume
+to pick up from a timed-out or interrupted job.
+"""
 
 import argparse
 import json
@@ -14,8 +18,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from rp_study.config import ClassifierConfig, ExperimentConfig, TrainingConfig
 from rp_study.experiments.supervised_training import (
+    EpochMetrics,
     SupervisedTrainingResult,
-    run_supervised_grid,
+    run_supervised_experiment,
     supervised_results_to_rows,
 )
 
@@ -24,6 +29,36 @@ def _parse_csv_list(raw: str, cast=str) -> List:
     if raw is None:
         return []
     return [cast(item.strip()) for item in raw.split(",") if item.strip()]
+
+
+def _result_to_payload(result: SupervisedTrainingResult) -> dict:
+    payload = asdict(result)
+    payload["history"] = [asdict(epoch) for epoch in result.history]
+    return payload
+
+
+def _payload_to_result(entry: dict) -> SupervisedTrainingResult:
+    history = [EpochMetrics(**h) for h in entry.get("history", [])]
+    return SupervisedTrainingResult(
+        classifier_config=entry["classifier_config"],
+        training_config=entry["training_config"],
+        status=entry["status"],
+        stop_reason=entry["stop_reason"],
+        best_epoch=entry["best_epoch"],
+        epochs_ran=entry["epochs_ran"],
+        best_test_accuracy=entry["best_test_accuracy"],
+        final_train_accuracy=entry["final_train_accuracy"],
+        final_test_accuracy=entry["final_test_accuracy"],
+        history=history,
+        parameter_count=entry["parameter_count"],
+        final_eval_train_accuracy=entry.get("final_eval_train_accuracy"),
+        final_eval_train_loss=entry.get("final_eval_train_loss"),
+    )
+
+
+def _format_run_name(cc: ClassifierConfig, tc: TrainingConfig) -> str:
+    bn_label = "bn" if cc.use_batch_norm else "nobn"
+    return f"{tc.dataset}/{cc.architecture}/{cc.depth}L/{cc.init_strategy}/{bn_label}"
 
 
 def _group_key(result: SupervisedTrainingResult) -> Tuple:
@@ -262,6 +297,11 @@ def main() -> None:
         "--best-output",
         default=str(ROOT / "reports" / "results" / "supervised_sweep_best.json"),
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from existing output file, skipping already-completed runs",
+    )
     args = parser.parse_args()
 
     exp_config = ExperimentConfig(seed=args.seed, device=args.device, data_dir=str(ROOT / "data"))
@@ -288,28 +328,65 @@ def main() -> None:
                             )
                         )
 
-    results = run_supervised_grid(exp_config, config_pairs)
-    rows = supervised_results_to_rows(results)
-    full_payload = []
-    for result in results:
-        payload = asdict(result)
-        payload["history"] = [asdict(epoch) for epoch in result.history]
-        full_payload.append(payload)
-
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(full_payload, indent=2))
+    best_output_path = Path(args.best_output)
+    best_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    all_payload: List[dict] = []
+    all_results: List[SupervisedTrainingResult] = []
+    start_idx = 0
+
+    if args.resume and output_path.exists():
+        existing_payload = json.loads(output_path.read_text())
+        all_payload = existing_payload
+        all_results = [_payload_to_result(entry) for entry in existing_payload]
+        start_idx = len(existing_payload)
+        print(
+            f"Resuming: found {start_idx} completed runs, "
+            f"skipping to run {start_idx + 1}/{len(config_pairs)}",
+            flush=True,
+        )
+
+    remaining_pairs = config_pairs[start_idx:]
+    total_runs = len(config_pairs)
+
+    for run_offset, (classifier_config, training_config) in enumerate(remaining_pairs):
+        run_idx = start_idx + run_offset + 1
+        exp_config.setup_seeds()
+        run_name = _format_run_name(classifier_config, training_config)
+        print(
+            f"[run {run_idx:02d}/{total_runs:02d}] start {run_name} "
+            f"(hidden={classifier_config.fc_hidden_dim if classifier_config.architecture == 'fc' else 'n/a'}, "
+            f"epochs={training_config.epochs})",
+            flush=True,
+        )
+        result = run_supervised_experiment(exp_config, classifier_config, training_config)
+        print(
+            f"[run {run_idx:02d}/{total_runs:02d}] done  {run_name} "
+            f"status={result.status} stop={result.stop_reason} "
+            f"epochs_ran={result.epochs_ran} "
+            f"best_test={result.best_test_accuracy:.4f} "
+            f"final_train={result.final_train_accuracy:.4f} "
+            f"final_eval_train={result.final_eval_train_accuracy:.4f} "
+            f"final_eval_train_loss={result.final_eval_train_loss:.4f}",
+            flush=True,
+        )
+
+        all_results.append(result)
+        all_payload.append(_result_to_payload(result))
+        output_path.write_text(json.dumps(all_payload, indent=2))
+
+    rows = supervised_results_to_rows(all_results)
 
     best_payload = _select_best_results(
-        results,
+        all_results,
         train_acc_threshold=args.selection_train_acc_threshold,
         train_loss_threshold=args.selection_train_loss_threshold,
     )
-    best_output_path = Path(args.best_output)
-    best_output_path.parent.mkdir(parents=True, exist_ok=True)
     best_output_path.write_text(json.dumps(best_payload, indent=2))
 
-    print(f"Saved {len(results)} sweep runs to {output_path}", flush=True)
+    print(f"\nSaved {len(all_results)} sweep runs to {output_path}", flush=True)
     print(f"Saved {len(best_payload)} best-config summaries to {best_output_path}", flush=True)
     for row in rows:
         bn_label = "BN" if row["use_batch_norm"] else "NoBN"

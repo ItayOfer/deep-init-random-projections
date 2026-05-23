@@ -1,0 +1,24 @@
+#!/bin/bash
+#SBATCH --job-name=row_centered_audit_cifar10_50L_bn
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=dgx01,dgx04
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=06:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/run_row_centered_audit.py \
+    --experiment row_centered_audit_cifar10_50L_bn \
+    --seed 42 \
+    --device cuda \
+    --output reports/results/row_centered_audit_cifar10_50L_bn.json"

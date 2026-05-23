@@ -4,3 +4,13 @@ __pycache__/
 *.sqsh
 *.out
 *.err
+
+# macOS noise
+.DS_Store
+
+# Local-only scratch / working notes (not part of the shared codebase)
+context_for_tuning_session.md
+context_from_codex_working_on_last_simulation_runs.md
+email_to_advisor_draft.md
+prompt_for_tuning_session.md
+reports/diagnostic_phase1_report.backup.html

@@ -90,12 +90,35 @@ class TrainingConfig:
     weight_decay: float = 0.0
     optimizer: Literal["adam", "sgd"] = "adam"
     momentum: float = 0.9
-    scheduler: Literal["none", "cosine", "step", "onecycle"] = "none"
+    scheduler: Literal["none", "cosine", "step", "onecycle", "plateau"] = "none"
     step_size: int = 10
     gamma: float = 0.1
     onecycle_pct_start: float = 0.3
     onecycle_div_factor: float = 25.0
     onecycle_final_div_factor: float = 1e4
+    plateau_patience: int = 5
+    plateau_factor: float = 0.5
+    plateau_min_lr: float = 1e-6
+    plateau_metric: Literal["eval_train_loss", "eval_train_accuracy"] = "eval_train_loss"
+    plateau_warmup_epochs: int = 0
+    # Linear LR warmup: ramp from learning_rate * lr_warmup_start_factor up
+    # to learning_rate over the first lr_warmup_epochs epochs.
+    # Applied BEFORE any scheduler step; the scheduler's own warmup (e.g.
+    # plateau_warmup_epochs) is independent and stacks on top.
+    lr_warmup_epochs: int = 0
+    lr_warmup_start_factor: float = 0.01
+    # Gradient clipping by global L2 norm; None = no clipping.
+    grad_clip_max_norm: Optional[float] = None
+    # Explosion guard. If abort_on_explosion is True, training aborts when
+    # batch loss exceeds explosion_loss_factor * first-ever-batch-loss, OR
+    # when batch loss is NaN/Inf (the latter aborts regardless of the flag).
+    # The first-batch loss is recorded once at epoch 1 batch 0 and never updated.
+    abort_on_explosion: bool = False
+    explosion_loss_factor: float = 5.0
+    # If True, prints per-batch loss + per-layer grad-norm summary every batch
+    # during epoch 1 only. Useful for diagnosing initialization-induced
+    # explosion/vanishing in the very first training step.
+    log_per_batch_first_epoch: bool = False
     num_train_samples: Optional[int] = None
     num_test_samples: Optional[int] = None
     normalize_inputs: bool = True
@@ -105,6 +128,10 @@ class TrainingConfig:
     target_patience: int = 1
     target_metric: Literal["train_accuracy", "eval_train_accuracy"] = "eval_train_accuracy"
     log_every_epoch: bool = False
+    diagnostics_every: int = 0
+    checkpoint_dir: Optional[str] = None
+    checkpoint_every: int = 0
+    resume_checkpoint: Optional[str] = None
 
 
 @dataclass

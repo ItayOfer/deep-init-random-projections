@@ -23,6 +23,7 @@ srun \
     --depths 30 \
     --init-strategies he \
     --batch-norm false,true \
+    --fc-hidden-dim 500 \
     --epochs 2 \
     --min-epochs 1 \
     --num-train-samples 256 \
@@ -33,19 +34,20 @@ srun \
     --target-train-accuracy 0.995 \
     --target-patience 1 \
     --target-metric eval_train_accuracy \
-    --nobn-optimizers adam \
+    --nobn-optimizers adam,sgd \
     --nobn-adam-lrs 1e-3 \
     --nobn-sgd-lrs 1e-2 \
-    --nobn-schedulers none \
+    --nobn-schedulers none,cosine,onecycle \
     --nobn-weight-decays 0 \
     --nobn-batch-sizes 64 \
-    --bn-optimizers adam \
+    --bn-optimizers adam,sgd \
     --bn-adam-lrs 1e-3 \
     --bn-sgd-lrs 3e-2 \
-    --bn-schedulers cosine \
+    --bn-schedulers cosine,onecycle \
     --bn-weight-decays 0 \
     --bn-batch-sizes 64 \
     --bn-norm-momentums 0.1 \
+    --sgd-momentums 0.9 \
     --log-every-epoch \
     --output reports/results/fnn_he_tuning_smoke.json \
     --best-output reports/results/fnn_he_tuning_smoke_best.json"

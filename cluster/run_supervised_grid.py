@@ -57,7 +57,7 @@ def main() -> None:
     parser.add_argument("--target-patience", type=int, default=1)
     parser.add_argument(
         "--target-metric",
-        default="train_accuracy",
+        default="eval_train_accuracy",
         choices=["train_accuracy", "eval_train_accuracy"],
     )
     parser.add_argument("--log-every-epoch", action="store_true")

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=fnn_he_bn_tune
+#SBATCH --job-name=fnn_he_bn_tune_c10
 #SBATCH -p dlc
 #SBATCH --gres=gpu:1
 #SBATCH --exclude=dgx01
@@ -18,7 +18,7 @@ srun \
   --container-mounts="${CODE_DIR}:/mount" \
   --container-workdir=/mount \
   bash -lc "python -u cluster/run_supervised_sweep.py \
-    --datasets cifar10,fashion_mnist \
+    --datasets cifar10 \
     --architectures fc \
     --depths 30,50,100 \
     --init-strategies he \
@@ -40,5 +40,6 @@ srun \
     --bn-batch-sizes 128,256 \
     --bn-norm-momentums 0.1,0.05 \
     --sgd-momentums 0.9 \
-    --output reports/results/fnn_he_tuning_bn_sweep.json \
-    --best-output reports/results/fnn_he_tuning_bn_best.json"
+    --output reports/results/fnn_he_tuning_bn_cifar10_sweep.json \
+    --best-output reports/results/fnn_he_tuning_bn_cifar10_best.json \
+    --resume"

@@ -1,6 +1,8 @@
 """Supervised training runners for FC/CNN initialization comparisons."""
 
+import math
 from dataclasses import asdict, dataclass, replace
+from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
@@ -30,6 +32,10 @@ class EpochMetrics:
     test_accuracy: float
     eval_train_loss: Optional[float] = None
     eval_train_accuracy: Optional[float] = None
+    learning_rate: Optional[float] = None
+    grad_norm_per_layer: Optional[List[float]] = None
+    bn_running_mean_norm: Optional[List[float]] = None
+    bn_running_var_mean: Optional[List[float]] = None
 
 
 @dataclass
@@ -49,6 +55,8 @@ class SupervisedTrainingResult:
     parameter_count: int
     final_eval_train_accuracy: Optional[float] = None
     final_eval_train_loss: Optional[float] = None
+    abort_reason: Optional[str] = None
+    initial_batch_loss: Optional[float] = None
 
 
 def _resolve_classifier_config(
@@ -114,6 +122,15 @@ def _build_scheduler(
             final_div_factor=training_config.onecycle_final_div_factor,
             anneal_strategy="cos",
         )
+    if training_config.scheduler == "plateau":
+        mode = "min" if training_config.plateau_metric == "eval_train_loss" else "max"
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode=mode,
+            factor=training_config.plateau_factor,
+            patience=training_config.plateau_patience,
+            min_lr=training_config.plateau_min_lr,
+        )
     raise ValueError(f"Unknown scheduler: {training_config.scheduler}")
 
 
@@ -170,6 +187,78 @@ def _format_run_name(classifier_config: ClassifierConfig, training_config: Train
     )
 
 
+def _collect_grad_norms(model: nn.Module) -> List[float]:
+    """Collect per-layer gradient L2 norms from hidden layers."""
+    norms: List[float] = []
+    hidden = getattr(model, "hidden_layers", [])
+    for layer in hidden:
+        if hasattr(layer, "weight") and layer.weight.grad is not None:
+            norms.append(layer.weight.grad.data.norm(2).item())
+        else:
+            norms.append(0.0)
+    return norms
+
+
+def _collect_bn_stats(model: nn.Module) -> Tuple[List[float], List[float]]:
+    """Collect BN running statistics summaries (mean norm, var mean per layer)."""
+    mean_norms: List[float] = []
+    var_means: List[float] = []
+    hidden_norms = getattr(model, "hidden_norms", [])
+    for bn in hidden_norms:
+        if hasattr(bn, "running_mean") and bn.running_mean is not None:
+            mean_norms.append(bn.running_mean.norm(2).item())
+            var_means.append(bn.running_var.mean().item())
+    return mean_norms, var_means
+
+
+def _get_current_lr(optimizer: torch.optim.Optimizer) -> float:
+    return optimizer.param_groups[0]["lr"]
+
+
+def _save_checkpoint(
+    checkpoint_dir: str,
+    run_name: str,
+    epoch: int,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Optional[torch.optim.lr_scheduler._LRScheduler],
+    best_test_accuracy: float,
+    best_epoch: int,
+) -> None:
+    path = Path(checkpoint_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    safe_name = run_name.replace("/", "_")
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "best_test_accuracy": best_test_accuracy,
+        "best_epoch": best_epoch,
+    }
+    if scheduler is not None:
+        checkpoint["scheduler_state_dict"] = scheduler.state_dict()
+    torch.save(checkpoint, path / f"{safe_name}_ep{epoch:04d}.pt")
+
+
+def _load_checkpoint(
+    checkpoint_path: str,
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Optional[torch.optim.lr_scheduler._LRScheduler],
+) -> Tuple[int, float, int]:
+    """Load checkpoint; returns (start_epoch, best_test_accuracy, best_epoch)."""
+    checkpoint = torch.load(checkpoint_path, weights_only=False)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    if scheduler is not None and "scheduler_state_dict" in checkpoint:
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+    return (
+        checkpoint["epoch"],
+        checkpoint.get("best_test_accuracy", 0.0),
+        checkpoint.get("best_epoch", 0),
+    )
+
+
 def run_supervised_experiment(
     exp_config: ExperimentConfig,
     classifier_config: ClassifierConfig,
@@ -205,13 +294,17 @@ def run_supervised_experiment(
     criterion = nn.CrossEntropyLoss(label_smoothing=training_config.label_smoothing)
     optimizer = _build_optimizer(model, training_config)
     scheduler = _build_scheduler(optimizer, training_config, steps_per_epoch=len(train_loader))
-    scheduler_step_per_batch = training_config.scheduler == "onecycle"
+    scheduler_kind = training_config.scheduler
+    scheduler_step_per_batch = scheduler_kind == "onecycle"
+    scheduler_needs_metric = scheduler_kind == "plateau"
 
     history: List[EpochMetrics] = []
     best_epoch = 0
     best_test_accuracy = float("-inf")
     status = "completed"
     stop_reason = "max_epochs"
+    abort_reason: Optional[str] = None
+    initial_batch_loss: Optional[float] = None
     final_train_accuracy = 0.0
     final_test_accuracy = 0.0
     final_eval_train_accuracy = 0.0
@@ -219,33 +312,95 @@ def run_supervised_experiment(
     epochs_ran = 0
     target_streak = 0
     run_name = _format_run_name(resolved_classifier, training_config)
+    start_epoch = 1
 
-    for epoch in range(1, training_config.epochs + 1):
+    if training_config.resume_checkpoint:
+        start_epoch_loaded, best_test_accuracy, best_epoch = _load_checkpoint(
+            training_config.resume_checkpoint, model, optimizer, scheduler,
+        )
+        start_epoch = start_epoch_loaded + 1
+        print(f"[{run_name}] resumed from checkpoint epoch {start_epoch_loaded}", flush=True)
+
+    diag_every = training_config.diagnostics_every
+
+    for epoch in range(start_epoch, training_config.epochs + 1):
+        if training_config.lr_warmup_epochs > 0 and epoch <= training_config.lr_warmup_epochs:
+            sf = training_config.lr_warmup_start_factor
+            frac = epoch / training_config.lr_warmup_epochs
+            scale = sf + (1.0 - sf) * frac
+            for pg in optimizer.param_groups:
+                pg["lr"] = training_config.learning_rate * scale
+
         model.train()
         total_loss = 0.0
         total_correct = 0
         total_samples = 0
 
-        for inputs, targets in train_loader:
+        for batch_idx, (inputs, targets) in enumerate(train_loader):
             inputs = inputs.to(device)
             targets = targets.to(device)
 
             optimizer.zero_grad()
             logits = model(inputs)
             loss = criterion(logits, targets)
+            loss_value = loss.item()
 
             if not torch.isfinite(loss):
                 status = "diverged"
                 stop_reason = "non_finite_loss"
+                abort_reason = (
+                    f"non-finite loss ({loss_value}) at epoch {epoch} batch {batch_idx}"
+                )
+                print(f"[{run_name}] ABORT: {abort_reason}", flush=True)
+                break
+
+            if initial_batch_loss is None:
+                initial_batch_loss = loss_value
+
+            if (
+                training_config.abort_on_explosion
+                and batch_idx > 0
+                and loss_value > training_config.explosion_loss_factor * initial_batch_loss
+            ):
+                status = "diverged"
+                stop_reason = "loss_exploded"
+                threshold = training_config.explosion_loss_factor * initial_batch_loss
+                abort_reason = (
+                    f"loss={loss_value:.4f} exceeded "
+                    f"{training_config.explosion_loss_factor:.2f}x initial "
+                    f"({initial_batch_loss:.4f}, threshold={threshold:.4f}) "
+                    f"at epoch {epoch} batch {batch_idx}"
+                )
+                print(f"[{run_name}] EXPLOSION ABORT: {abort_reason}", flush=True)
                 break
 
             loss.backward()
+
+            if training_config.log_per_batch_first_epoch and epoch == 1:
+                per_layer = _collect_grad_norms(model)
+                if per_layer:
+                    total_norm = math.sqrt(sum(g * g for g in per_layer))
+                    nonzero = [g for g in per_layer if g > 0]
+                    min_g = min(nonzero) if nonzero else 0.0
+                    max_g = max(per_layer)
+                    print(
+                        f"[{run_name}] ep1 batch={batch_idx:04d} "
+                        f"loss={loss_value:.4f} total_grad={total_norm:.3e} "
+                        f"layer_grad=[{min_g:.3e},{max_g:.3e}]",
+                        flush=True,
+                    )
+
+            if training_config.grad_clip_max_norm is not None:
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(),
+                    max_norm=training_config.grad_clip_max_norm,
+                )
             optimizer.step()
             if scheduler is not None and scheduler_step_per_batch:
                 scheduler.step()
 
             batch_size = targets.size(0)
-            total_loss += loss.item() * batch_size
+            total_loss += loss_value * batch_size
             total_correct += (logits.argmax(dim=1) == targets).sum().item()
             total_samples += batch_size
 
@@ -254,6 +409,15 @@ def run_supervised_experiment(
 
         train_loss = total_loss / max(total_samples, 1)
         train_accuracy = total_correct / max(total_samples, 1)
+
+        is_diag_epoch = diag_every > 0 and epoch % diag_every == 0
+        grad_norms = _collect_grad_norms(model) if is_diag_epoch else None
+        current_lr = _get_current_lr(optimizer)
+        bn_mean_norms = None
+        bn_var_means = None
+        if is_diag_epoch and resolved_classifier.use_batch_norm:
+            bn_mean_norms, bn_var_means = _collect_bn_stats(model)
+
         eval_train_loss, eval_train_accuracy = _evaluate_classifier(
             model,
             train_eval_loader,
@@ -271,6 +435,10 @@ def run_supervised_experiment(
                 test_accuracy=test_accuracy,
                 eval_train_loss=eval_train_loss,
                 eval_train_accuracy=eval_train_accuracy,
+                learning_rate=current_lr,
+                grad_norm_per_layer=grad_norms,
+                bn_running_mean_norm=bn_mean_norms,
+                bn_running_var_mean=bn_var_means,
             )
         )
 
@@ -283,16 +451,41 @@ def run_supervised_experiment(
             best_epoch = epoch
 
         if scheduler is not None and not scheduler_step_per_batch:
-            scheduler.step()
+            if scheduler_needs_metric:
+                in_warmup = epoch <= training_config.plateau_warmup_epochs
+                if not in_warmup:
+                    metric_value = (
+                        eval_train_loss
+                        if training_config.plateau_metric == "eval_train_loss"
+                        else eval_train_accuracy
+                    )
+                    scheduler.step(metric_value)
+            else:
+                scheduler.step()
 
         if training_config.log_every_epoch:
-            print(
-                f"[{run_name}] "
-                f"epoch={epoch:03d}/{training_config.epochs:03d} "
-                f"train_loss={train_loss:.4f} train_acc={train_accuracy:.4f} "
-                f"eval_train_loss={eval_train_loss:.4f} eval_train_acc={eval_train_accuracy:.4f} "
+            log_parts = [
+                f"[{run_name}] ",
+                f"epoch={epoch:03d}/{training_config.epochs:03d} ",
+                f"lr={current_lr:.6f} ",
+                f"train_loss={train_loss:.4f} train_acc={train_accuracy:.4f} ",
+                f"eval_train_loss={eval_train_loss:.4f} eval_train_acc={eval_train_accuracy:.4f} ",
                 f"test_loss={test_loss:.4f} test_acc={test_accuracy:.4f}",
-                flush=True,
+            ]
+            if is_diag_epoch and grad_norms:
+                log_parts.append(
+                    f" grad_norm_range=[{min(grad_norms):.2e},{max(grad_norms):.2e}]"
+                )
+            print("".join(log_parts), flush=True)
+
+        if (
+            training_config.checkpoint_dir
+            and training_config.checkpoint_every > 0
+            and epoch % training_config.checkpoint_every == 0
+        ):
+            _save_checkpoint(
+                training_config.checkpoint_dir, run_name, epoch,
+                model, optimizer, scheduler, best_test_accuracy, best_epoch,
             )
 
         target_value = (
@@ -338,6 +531,8 @@ def run_supervised_experiment(
         parameter_count=sum(parameter.numel() for parameter in model.parameters()),
         final_eval_train_accuracy=final_eval_train_accuracy,
         final_eval_train_loss=final_eval_train_loss,
+        abort_reason=abort_reason,
+        initial_batch_loss=initial_batch_loss,
     )
 
 

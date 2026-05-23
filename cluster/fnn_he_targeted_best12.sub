@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=fnn_he_tuned_final
+#SBATCH --job-name=fnn_he_best12
 #SBATCH -p dlc
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=dgx01
+#SBATCH --exclude=dgx01,dgx04
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=%x-%j.out
 
 set -euo pipefail
@@ -18,7 +18,7 @@ srun \
   --container-mounts="${CODE_DIR}:/mount" \
   --container-workdir=/mount \
   bash -lc "python -u cluster/run_supervised_from_configs.py \
-    --config-jsons reports/results/fnn_he_tuning_nobn_best.json,reports/results/fnn_he_tuning_bn_cifar10_best.json,reports/results/fnn_he_tuning_bn_fmnist_best.json \
+    --config-jsons reports/results/fnn_he_targeted_best12_configs.json \
     --epochs 200 \
     --min-epochs 40 \
     --target-train-accuracy 0.995 \
@@ -26,4 +26,4 @@ srun \
     --target-metric eval_train_accuracy \
     --device cuda \
     --log-every-epoch \
-    --output reports/results/fnn_he_tuned_final.json"
+    --output reports/results/fnn_he_targeted_best12.json"
