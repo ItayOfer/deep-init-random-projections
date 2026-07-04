@@ -69,6 +69,6 @@ fig.suptitle(f"ROW-CENTERED FORWARD-BALANCED, 100L at init (seed={SEED}): forwar
              "rms(delta) vs grad row norm -- constant vs funnel 500->100", fontsize=13, y=1.01)
 fig.tight_layout()
 suffix = "" if SEED == 42 else f"_seed{SEED}"
-out = f"reports/figures/rcfwd_funnel100_fwd_bwd_100L{suffix}.png"
+out = f"reports/figures/rcfwd_rescale/rcfwd_funnel100_fwd_bwd_100L{suffix}.png"
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print("saved", out)

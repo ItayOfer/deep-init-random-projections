@@ -76,5 +76,5 @@ for outname, (taper, taper_label) in FUNNELS.items():
     fig.suptitle(f"He 100L at init: forward rms(A) vs backward rms(delta) vs grad row norm "
                  f"-- constant vs {taper_label}", fontsize=13, y=1.01)
     fig.tight_layout()
-    fig.savefig(f"reports/figures/{outname}", dpi=130, bbox_inches="tight")
-    print(f"  saved reports/figures/{outname}")
+    fig.savefig(f"reports/figures/gain_funnels/{outname}", dpi=130, bbox_inches="tight")
+    print(f"  saved reports/figures/gain_funnels/{outname}")

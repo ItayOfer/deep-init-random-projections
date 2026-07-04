@@ -24,8 +24,8 @@ restricted to numerically-healthy eta.
 Output
 ------
   reports/results/eta_sweep_research.json   -- full sweep data
-  reports/figures/eta_sweep_ratio_curves.png -- G(eta) per depth/dataset
-  reports/figures/eta_sweep_perlayer_<dataset>.png -- per-layer grad row
+  reports/figures/eta_sweep/eta_sweep_ratio_curves.png -- G(eta) per depth/dataset
+  reports/figures/eta_sweep/eta_sweep_perlayer_<dataset>.png -- per-layer grad row
         norms at eta* for each depth (the notebook-11-style figure)
 """
 

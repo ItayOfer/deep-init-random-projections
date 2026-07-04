@@ -61,6 +61,6 @@ for col, dataset in enumerate(["fashion_mnist", "cifar10"]):
 fig.suptitle("He init, 100L, at initialization: gradient row norm across layers "
              "-- constant width vs tapered 500->10", fontsize=13, y=1.01)
 fig.tight_layout()
-out = "reports/figures/he_funnel_gradient_100L.png"
+out = "reports/figures/gain_funnels/he_funnel_gradient_100L.png"
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print("saved", out)

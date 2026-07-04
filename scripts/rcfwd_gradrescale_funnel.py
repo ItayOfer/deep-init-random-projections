@@ -124,6 +124,6 @@ for col, dataset in enumerate(["fashion_mnist", "cifar10"]):
 fig.suptitle(f"row_centered_forward_balanced + per-layer BACKWARD rescale by r={R:.3f}, 100L at init: "
              "does rms(delta) go flat?", fontsize=13, y=1.01)
 fig.tight_layout()
-out = "reports/figures/rcfwd_gradrescale_funnel100_100L.png"
+out = "reports/figures/rcfwd_rescale/rcfwd_gradrescale_funnel100_100L.png"
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print("saved", out)

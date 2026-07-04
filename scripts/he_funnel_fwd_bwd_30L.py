@@ -59,5 +59,5 @@ for col, dataset in enumerate(["fashion_mnist", "cifar10"]):
 fig.suptitle("He 30L at init: forward rms(A) vs backward rms(delta) vs grad row norm "
              "-- constant vs funnel 500->100", fontsize=13, y=1.01)
 fig.tight_layout()
-fig.savefig("reports/figures/he_funnel_fwd_bwd_30L.png", dpi=130, bbox_inches="tight")
-print("saved reports/figures/he_funnel_fwd_bwd_30L.png")
+fig.savefig("reports/figures/gain_funnels/he_funnel_fwd_bwd_30L.png", dpi=130, bbox_inches="tight")
+print("saved reports/figures/gain_funnels/he_funnel_fwd_bwd_30L.png")

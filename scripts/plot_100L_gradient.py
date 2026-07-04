@@ -56,6 +56,6 @@ axes[1].set_title("Per-layer gradient row norm at init (L=100, eta=0.36)")
 axes[1].legend(); axes[1].grid(alpha=0.3, which="both")
 
 fig.tight_layout()
-out = "reports/figures/v2_nobn_100L_init_profile.png"
+out = "reports/figures/v2_eta_nobn/v2_nobn_100L_init_profile.png"
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print("saved", out)

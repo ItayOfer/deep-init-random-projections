@@ -103,6 +103,6 @@ axes[1].set_title("peak bulge vs epoch under lr=1e-6 (flat = frozen)")
 axes[1].legend(); axes[1].grid(alpha=0.3, which="both")
 fig.suptitle("What lr=1e-6 did to the activation bulge (measured by reproducing the runs)", y=1.02, fontsize=13)
 fig.tight_layout()
-out = "reports/figures/v2_nobn_bulge_under_lr1e6_measured.png"
+out = "reports/figures/v2_eta_nobn/v2_nobn_bulge_under_lr1e6_measured.png"
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print("saved", out)

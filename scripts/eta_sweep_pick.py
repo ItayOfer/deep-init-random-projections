@@ -115,7 +115,7 @@ def main():
         ax.legend()
         ax.grid(alpha=0.3, which="both")
     fig.tight_layout()
-    out = ROOT / "reports/figures/eta_sweep_safe_tradeoff.png"
+    out = ROOT / "reports/figures/eta_sweep/eta_sweep_safe_tradeoff.png"
     fig.savefig(out, dpi=130, bbox_inches="tight")
     print(f"Saved -> {out}")
 

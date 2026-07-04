@@ -53,6 +53,6 @@ axes[0].set_ylabel("forward activation RMS at init (float64)")
 fig.suptitle("Why depth kills V2 NoBN: the activation bulge peak climbs with depth and "
              "nears the float32 ceiling at L=100", y=1.02, fontsize=13)
 fig.tight_layout()
-out = "reports/figures/v2_nobn_bulge_by_depth.png"
+out = "reports/figures/v2_eta_nobn/v2_nobn_bulge_by_depth.png"
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print("saved", out)

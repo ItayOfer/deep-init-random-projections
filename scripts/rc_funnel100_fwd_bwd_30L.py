@@ -61,6 +61,6 @@ for col, dataset in enumerate(["fashion_mnist", "cifar10"]):
 fig.suptitle("ROW-CENTERED He (row_centered_he), 30L at init: forward rms(A) vs backward "
              "rms(delta) vs grad row norm -- constant vs funnel 500->100", fontsize=13, y=1.01)
 fig.tight_layout()
-out = "reports/figures/rc_funnel100_fwd_bwd_30L.png"
+out = "reports/figures/gain_funnels/rc_funnel100_fwd_bwd_30L.png"
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print("saved", out)
