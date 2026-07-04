@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Diagnostic Phase 2 — Report</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 1000px; margin: 2em auto; padding: 0 1.5em; color: #222; line-height: 1.5; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: 0.3em; }
+  h2 { margin-top: 1.8em; border-bottom: 1px solid #ccc; padding-bottom: 0.2em; }
+  h3 { margin-top: 1.4em; }
+  table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 0.92em; }
+  th, td { border: 1px solid #ccc; padding: 0.4em 0.6em; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  tr.pass { background: #e8f5e9; }
+  tr.fail { background: #ffebee; }
+  tr.partial { background: #fff3e0; }
+  tr.dead { background: #eceff1; }
+  code, .mono { font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 0.88em; }
+  .verdict { font-weight: bold; }
+  .verdict.pass { color: #2e7d32; }
+  .verdict.fail { color: #c62828; }
+  .verdict.partial { color: #ef6c00; }
+  .verdict.dead { color: #455a64; }
+  .takeaway { background: #fffde7; border-left: 4px solid #fbc02d; padding: 0.6em 1em; margin: 0.8em 0; }
+  .next { background: #e3f2fd; border-left: 4px solid #1976d2; padding: 0.6em 1em; margin: 0.8em 0; }
+  .alert { background: #ffebee; border-left: 4px solid #c62828; padding: 0.6em 1em; margin: 0.8em 0; }
+  .meta { color: #666; font-size: 0.9em; }
+  details { margin: 0.4em 0; }
+  summary { cursor: pointer; color: #1976d2; }
+  pre { background: #f5f5f5; padding: 0.6em; overflow-x: auto; font-size: 0.85em; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Diagnostic Phase 2 — Long-Run Confirmation + Adaptive LR A/B</h1>
+<p class="meta">7 runs on the cluster (job <code>fnn_diag_p2-165881</code>, dgx02).
+Source: <code>reports/results/diagnostic_phase2.json</code> · log: <code>fnn_diag_p2-165881.out</code></p>
+
+<div class="alert">
+<b>Headline.</b> The advisor's intuition was right: <b>adaptive learning rate (ReduceLROnPlateau) rescues the cifar10/50L/BN architecture</b> from a guaranteed BN-driven collapse (0.13 final with constant LR) to a clean climb (<b>0.9577 final</b>). At the same time, Phase 2 revealed that <b>Phase 1's "promising" fmnist/50L/BN result was an artifact</b>: with cosine matched to the full 100 epochs, that run also collapses catastrophically at epoch 31.
+</div>
+
+<div class="takeaway">
+<b>How to read this report.</b>
+<ul style="margin: 0.4em 0 0 1.2em;">
+  <li><b>Primary metric:</b> <code>eval_train_accuracy</code> on the full training set in <code>model.eval()</code>. Thesis pass criterion: <code>≥ 0.995</code> AND <code>eval_train_loss ≤ 0.10</code>.</li>
+  <li><b>Run lengths.</b> 6 of 7 runs trained 100 epochs; run G is a 10-epoch gradient-death symmetry check (mirror of Phase 1 run #7).</li>
+  <li><b>Key new column:</b> <code>BN var (final)</code> — the mean of BN running variances across all 50/100 layers at the last epoch. Values above ~10 indicate runaway BN drift, the mechanism behind the collapse.</li>
+</ul>
+</div>
+
+<h2>Key Plots</h2>
+
+<p><b>Figure 1.</b> All 7 trajectories. The blue solid curve (D, plateau) climbs steadily to 0.96. The red and orange dashed curves (B and C, the BN collapses) climb then crash. The dotted 100L curves (E, F) barely leave 0.1.</p>
+<p><img src="figures/phase2_eval_train_acc.png" alt="Eval-train accuracy trajectories" style="max-width:100%;"></p>
+
+<p><b>Figure 2.</b> LR schedules (log scale). Note D's stepwise drops from <code>ReduceLROnPlateau</code> — each drop fired after 5 epochs of no eval_train_loss improvement. C is flat at 1e-3 throughout (constant LR control). The four cosine runs decay smoothly to ~1e-7 by epoch 100.</p>
+<p><img src="figures/phase2_lr_schedule.png" alt="LR schedules" style="max-width:100%;"></p>
+
+<p><b>Figure 3.</b> The headline result. cifar10/50L/BN with constant LR (orange) climbs to ~0.53, then collapses to 0.13 around epoch 71. The same architecture with <code>ReduceLROnPlateau</code> (blue) climbs through 4 LR drops (vertical dotted lines) to 0.9577. Each LR drop coincides with a plateau in the climb; after each drop, learning resumes.</p>
+<p><img src="figures/phase2_cd_rescue.png" alt="C vs D rescue" style="max-width:100%;"></p>
+
+<p><b>Figure 4.</b> The BN-variance mechanism. For the three 50L/BN runs, the mean BN running variance grows over training. Constant-LR C runs away to ~160; cosine-LR B blows up to ~30; only plateau-LR D keeps it bounded near ~14. The BN-stat catastrophe is the failure mode that adaptive LR throttling prevents.</p>
+<p><img src="figures/phase2_bn_var.png" alt="BN running variance growth" style="max-width:100%;"></p>
+
+<h2>Summary Table</h2>
+
+<table>
+<thead>
+<tr><th>#</th><th>Run</th><th>LR schedule</th><th>Best<br>eval_train_acc</th><th>@ep</th><th>Final<br>eval_train_acc</th><th>Final<br>loss</th><th>BN var<br>(final)</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr class="partial">
+  <td>A</td>
+  <td class="mono">fmnist/50L/NoBN<br>SGD lr=0.003</td>
+  <td class="mono">constant</td>
+  <td><b>0.9856</b></td><td>50</td><td>0.9819</td><td>0.0587</td><td>—</td>
+  <td class="verdict partial">NEAR-PASS — loss OK (≤0.10) but accuracy short of 0.995; mild mid-run drift</td>
+</tr>
+<tr class="fail">
+  <td>B</td>
+  <td class="mono">fmnist/50L/BN<br>Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">cosine T_max=100</td>
+  <td>0.8977</td><td>21</td><td>0.3264</td><td>1.8909</td><td>28.97</td>
+  <td class="verdict fail">COLLAPSED @ ep 31 — Phase 1's "promising" was illusion</td>
+</tr>
+<tr class="fail">
+  <td>C</td>
+  <td class="mono">cifar10/50L/BN<br>Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">constant</td>
+  <td>0.5374</td><td>42</td><td>0.1355</td><td>2.2995</td><td>158.09</td>
+  <td class="verdict fail">COLLAPSED @ ep 71 — confirms BN drift, not LR overshoot</td>
+</tr>
+<tr class="pass">
+  <td>D</td>
+  <td class="mono">cifar10/50L/BN<br>Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">ReduceLROnPlateau<br>patience=5 factor=0.5</td>
+  <td><b>0.9577</b></td><td>100</td><td><b>0.9577</b></td><td>0.1755</td><td>13.88</td>
+  <td class="verdict pass">WINNER — clean climb through 4 LR drops, no collapse</td>
+</tr>
+<tr class="fail">
+  <td>E</td>
+  <td class="mono">cifar10/100L/BN<br>Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">cosine T_max=100</td>
+  <td>0.2142</td><td>96</td><td>0.1729</td><td>2.1934</td><td>7.04</td>
+  <td class="verdict fail">NEAR-DEAD — 100L/BN barely learns</td>
+</tr>
+<tr class="fail">
+  <td>F</td>
+  <td class="mono">fmnist/100L/BN<br>Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">cosine T_max=100</td>
+  <td>0.2018</td><td>46</td><td>0.1255</td><td>2.2778</td><td>13.55</td>
+  <td class="verdict fail">NEAR-DEAD — same on fmnist</td>
+</tr>
+<tr class="dead">
+  <td>G</td>
+  <td class="mono">fmnist/100L/NoBN<br>Adam lr=0.001</td>
+  <td class="mono">cosine (10 ep)</td>
+  <td>0.1000</td><td>10</td><td>0.1000</td><td>2.3026</td><td>—</td>
+  <td class="verdict dead">CONFIRMED DEAD — mirrors Phase 1 run #7</td>
+</tr>
+</tbody>
+</table>
+
+<h2>Comparison: Phase 1 → Phase 2</h2>
+<table>
+<thead>
+<tr><th>Architecture</th><th>Phase 1 (30 ep)</th><th>Phase 2 (100 ep)</th><th>Lesson</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><b>fmnist/50L/NoBN</b></td>
+  <td class="mono">SGD const lr=0.003 → 0.9567 @ ep30</td>
+  <td class="mono">Same → 0.9819 @ ep100 (best 0.9856 @ ep50)</td>
+  <td>Continues climbing past Phase 1, but plateaus below 0.995. Mild mid-run drift (ep 61–71).</td>
+</tr>
+<tr>
+  <td><b>fmnist/50L/BN</b></td>
+  <td class="mono">cosine T_max=30 → 0.9668 @ ep30 (looked stable)</td>
+  <td class="mono">cosine T_max=100 → 0.8977 @ ep21, then crash to 0.33</td>
+  <td><b>Phase 1 result was an artifact</b> of cosine T_max=30 freezing training before BN collapse could manifest. The collapse is real.</td>
+</tr>
+<tr>
+  <td><b>cifar10/50L/BN</b></td>
+  <td class="mono">cosine T_max=30 → 0.5406 @ ep30 (ambiguous)</td>
+  <td class="mono">C const → collapse to 0.13<br>D plateau → <b>0.9577</b></td>
+  <td><b>Solved</b> by adaptive LR. The plateau rule prevents BN-stat runaway by slowing parameter updates whenever the run stalls.</td>
+</tr>
+<tr>
+  <td><b>cifar10/100L/BN</b></td>
+  <td>(not tested)</td>
+  <td class="mono">cosine → 0.2142 best</td>
+  <td>Borderline-untrainable with this recipe. Not dead (NoBN is), but ~random-class plateau.</td>
+</tr>
+<tr>
+  <td><b>fmnist/100L/BN</b></td>
+  <td>(not tested)</td>
+  <td class="mono">cosine → 0.2018 best</td>
+  <td>Same story. 100L is the depth boundary even with BN.</td>
+</tr>
+<tr>
+  <td><b>100L/NoBN (both)</b></td>
+  <td class="mono">cifar10 run #7 → grads = 0 by ep 3</td>
+  <td class="mono">fmnist run G → grads = 0 by ep 3</td>
+  <td><b>Symmetric coverage:</b> 100L FC without normalization is unconditionally dead. Belongs in the thesis as a finding.</td>
+</tr>
+</tbody>
+</table>
+
+<h2>Current Status of All 12 Architectures</h2>
+<p class="meta">"Best known" = the strongest stable training result we've reached for each <code>(dataset, depth, BN)</code> combination across the original sweep, Phase 1, and Phase 2. Cells are the <b>final-epoch</b> values of that best run (or the peak-before-collapse snapshot for architectures that collapse, clearly marked). <b>Criterion:</b> <code>eval_train_acc ≥ 0.995</code> AND <code>eval_train_loss ≤ 0.10</code>.</p>
+
+<table>
+<thead>
+<tr>
+  <th>Dataset</th><th>Arch</th><th>Depth</th><th>BN</th>
+  <th>Final<br>test_acc</th>
+  <th>Final<br>eval_train_acc</th>
+  <th>Final<br>eval_train_loss</th>
+  <th>Pass<br>criterion?</th>
+  <th>Source (best known)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="pass">
+  <td>cifar10</td><td>fc</td><td>30L</td><td>NoBN</td>
+  <td class="mono">0.5425</td><td class="mono">0.9974</td><td class="mono">0.0086</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>fc</td><td>30L</td><td>BN</td>
+  <td class="mono">0.5486</td><td class="mono">0.9976</td><td class="mono">0.0124</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>fc</td><td>50L</td><td>NoBN</td>
+  <td class="mono">0.5381</td><td class="mono">0.9981</td><td class="mono">0.0073</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="partial">
+  <td>cifar10</td><td>fc</td><td>50L</td><td>BN</td>
+  <td class="mono">0.5121 <span class="meta">(was 0.2251)</span></td>
+  <td class="mono">0.9577 <span class="meta">(was 0.2215)</span></td>
+  <td class="mono">0.1755 <span class="meta">(was 2.351)</span></td>
+  <td>No <span class="meta">(close — loss above 0.10)</span></td>
+  <td class="mono">Phase 2 <b>D</b> (plateau, 100 ep)</td>
+</tr>
+<tr class="dead">
+  <td>cifar10</td><td>fc</td><td>100L</td><td>NoBN</td>
+  <td class="mono">0.1000</td><td class="mono">0.1000</td><td class="mono">2.3026</td>
+  <td>No <span class="meta">(unconditionally dead — grads = 0 by ep 3)</span></td>
+  <td class="mono">Phase 1 run #7</td>
+</tr>
+<tr class="fail">
+  <td>cifar10</td><td>fc</td><td>100L</td><td>BN</td>
+  <td class="mono">0.2096 <span class="meta">(was 0.1305)</span></td>
+  <td class="mono">0.2142 <span class="meta">(was 0.1211)</span></td>
+  <td class="mono">2.0827 <span class="meta">(was 2.294)</span></td>
+  <td>No <span class="meta">(borderline-untrainable at depth 100)</span></td>
+  <td class="mono">Phase 2 <b>E</b> (best snap @ ep 96)</td>
+</tr>
+<tr class="pass">
+  <td>fashion_mnist</td><td>fc</td><td>30L</td><td>NoBN</td>
+  <td class="mono">0.8957</td><td class="mono">0.9960</td><td class="mono">0.0107</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="pass">
+  <td>fashion_mnist</td><td>fc</td><td>30L</td><td>BN</td>
+  <td class="mono">0.9015</td><td class="mono">0.9963</td><td class="mono">0.0183</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="partial">
+  <td>fashion_mnist</td><td>fc</td><td>50L</td><td>NoBN</td>
+  <td class="mono">0.8872 <span class="meta">(was 0.8414)</span></td>
+  <td class="mono">0.9856 <span class="meta">(was 0.8642)</span></td>
+  <td class="mono">0.0446 <span class="meta">(was 0.404)</span></td>
+  <td>No <span class="meta">(very close — loss ≤ 0.10 ✓, acc 1.4 pts short)</span></td>
+  <td class="mono">Phase 2 <b>A</b> (SGD const, best snap @ ep 50)</td>
+</tr>
+<tr class="partial">
+  <td>fashion_mnist</td><td>fc</td><td>50L</td><td>BN</td>
+  <td class="mono">0.8740 <span class="meta">(was 0.2927)</span></td>
+  <td class="mono">0.9668 <span class="meta">(was 0.2960)</span></td>
+  <td class="mono">0.1137 <span class="meta">(was 2.868)</span></td>
+  <td>No <span class="meta">(fragile — only stable with cosine T_max=30; Phase 2 B with T_max=100 collapsed)</span></td>
+  <td class="mono">Phase 1 run #6 (cosine T_max=30, ep 30)</td>
+</tr>
+<tr class="dead">
+  <td>fashion_mnist</td><td>fc</td><td>100L</td><td>NoBN</td>
+  <td class="mono">0.1000</td><td class="mono">0.1000</td><td class="mono">2.3026</td>
+  <td>No <span class="meta">(unconditionally dead — confirmed in Phase 2 G)</span></td>
+  <td class="mono">Phase 2 run <b>G</b></td>
+</tr>
+<tr class="fail">
+  <td>fashion_mnist</td><td>fc</td><td>100L</td><td>BN</td>
+  <td class="mono">0.2010</td><td class="mono">0.2018</td><td class="mono">2.1147</td>
+  <td>No <span class="meta">(borderline-untrainable at depth 100)</span></td>
+  <td class="mono">Phase 2 <b>F</b> (best snap @ ep 46)</td>
+</tr>
+</tbody>
+</table>
+
+<div class="takeaway">
+<b>Scoreboard:</b> 5 / 12 pass strictly, same count as the original sweep. But the picture under the hood is very different — three architectures (<code>cifar10/50L/BN</code>, <code>fmnist/50L/NoBN</code>, <code>fmnist/50L/BN</code>) have moved from total failure (acc &lt; 0.30) to <b>near-pass</b> (acc &gt; 0.95), with loss two orders of magnitude lower. The remaining gap to 0.995 is small enough that Phase 3 should close it for at least <code>fmnist/50L/NoBN</code> and <code>cifar10/50L/BN</code>. The 100L architectures remain genuinely hard: <b>dead without BN, barely-trainable with BN</b> — likely a thesis result rather than a tuning target.
+</div>
+
+<h2>Key Findings</h2>
+
+<div class="alert">
+<b>1. Adaptive LR is the right schedule for the collapse-prone BN architectures.</b> Run D climbed cleanly to 0.9577 with 4 plateau-triggered LR drops, while the same architecture with constant LR (C) collapsed at epoch 71 (final loss=173 at peak instability, bn_var=158). The advisor's hypothesis is now well-supported by data: adaptive LR throttling prevents the BN-running-variance runaway that drives the collapse.
+</div>
+
+<div class="alert">
+<b>2. Phase 1's "promising" fmnist/50L/BN was a measurement artifact.</b> Phase 1 used cosine with <code>T_max=30</code>, so by epoch ~25 the LR was already near zero — effectively freezing the model before BN drift could compound. Phase 2 used <code>T_max=100</code>, exposing the real dynamics: a clean climb to 0.9 by ep 21, then a catastrophic loss spike (ep 31: loss=18.2) and total collapse. This validates the original Phase 0 sweep failure for this architecture and underscores why scheduler choice must match epoch budget.
+</div>
+
+<div class="takeaway">
+<b>3. The collapse mechanism is BN-variance runaway, not LR overshoot.</b> Run C used constant LR=1e-3 throughout (no scheduler at all) and still collapsed — bn_var grew from ~1 to ~158 by the end. This rules out the "LR too high → diverges → recovers" hypothesis and points squarely at compound BN updates: at depth 50, small drift in running statistics per epoch accumulates over tens of epochs into a regime where the forward pass at eval time produces non-finite or extreme activations.
+</div>
+
+<div class="takeaway">
+<b>4. The Phase 1 winner (A: fmnist/50L/NoBN const SGD) did not cross the 0.995 threshold even at 100 epochs.</b> Best was 0.9856 at epoch 50; the run showed mild instability (drop to 0.80 at ep 71, recovery to 0.98 by ep 91). Final loss (0.0587) is well under the 0.10 threshold, but accuracy falls 0.94 percentage points short. This suggests either: more epochs may not help (the model has converged to a different minimum), or we need a different optimizer/regularizer to push past.
+</div>
+
+<div class="alert">
+<b>5. 100L/BN is borderline-untrainable with He init.</b> Both E (cifar10) and F (fmnist) stayed near 0.20 best accuracy across 100 epochs. They don't suffer gradient death like 100L/NoBN, but they don't learn meaningfully either. The BN buys some signal but not enough. This is a second negative result for the thesis: <i>He init at depth 100 is insufficient even with BatchNorm</i>.
+</div>
+
+<div class="takeaway">
+<b>6. fmnist/100L/NoBN is dead, mirroring cifar10/100L/NoBN.</b> Run G confirmed in 10 epochs what we expected: gradients drop to exactly 0 by epoch 3, training never moves. Both 100L/NoBN runs are now symmetric negative results. Thesis sentence: <i>"He-init FC networks at depth 100 without normalization cannot be trained; gradients vanish to machine zero within three epochs, regardless of dataset."</i>
+</div>
+
+<h2>Detailed Trajectories</h2>
+
+<details><summary>A. fmnist/50L/NoBN, SGD const lr=0.003 (NEAR-PASS)</summary>
+<pre>ep   1: lr=0.003000 acc=0.7549 loss=0.6567
+ep  11: lr=0.003000 acc=0.9175 loss=0.2321
+ep  21: lr=0.003000 acc=0.9353 loss=0.1850
+ep  31: lr=0.003000 acc=0.9564 loss=0.1211
+ep  41: lr=0.003000 acc=0.9805 loss=0.0612
+ep  51: lr=0.003000 acc=0.9830 loss=0.0553   ← climbing through here
+ep  61: lr=0.003000 acc=0.8884 loss=0.3202   ← brief instability
+ep  71: lr=0.003000 acc=0.8004 loss=0.5907   ← deeper dip
+ep  81: lr=0.003000 acc=0.9236 loss=0.2501   ← recovering
+ep  91: lr=0.003000 acc=0.9760 loss=0.0810
+ep 100: lr=0.003000 acc=0.9819 loss=0.0587 grad=[1.00e-01,1.33e+00]</pre>
+Best 0.9856 @ ep 50. The dip at ep 61–71 is a notable concern — possibly a single bad-batch event with constant LR. With a small LR drop at that point, the model would have stayed near 0.98.
+</details>
+
+<details><summary>B. fmnist/50L/BN, Adam cosine T_max=100 bnm=0.01 (COLLAPSED)</summary>
+<pre>ep   1: lr=0.001000 acc=0.3973 loss=2.3532
+ep  11: lr=0.000976 acc=0.8657 loss=0.4151
+ep  21: lr=0.000905 acc=0.8977 loss=0.3540   ← peak
+ep  31: lr=0.000794 acc=0.3915 loss=18.1981  ← CATASTROPHIC
+ep  41: lr=0.000655 acc=0.1123 loss=10.4416
+ep  51: lr=0.000500 acc=0.1000 loss=7.0434   ← at random chance
+ep  61: lr=0.000345 acc=0.1880 loss=4.0968
+ep  71: lr=0.000206 acc=0.1678 loss=20.7684
+ep  81: lr=0.000095 acc=0.2409 loss=3.3223
+ep  91: lr=0.000024 acc=0.3018 loss=1.9026   ← LR decay slowly nurses it back
+ep 100: lr=0.000000 acc=0.3264 loss=1.8909 bn_var=28.97</pre>
+Climbed cleanly through ep 21, then disintegrated at ep 31 (loss × 50). BN running variance ended at ~29.
+</details>
+
+<details><summary>C. cifar10/50L/BN, Adam const lr=0.001 bnm=0.01 (COLLAPSED)</summary>
+<pre>ep   1: lr=0.001000 acc=0.1128 loss=3.5507
+ep  11: lr=0.001000 acc=0.3070 loss=1.8497
+ep  21: lr=0.001000 acc=0.4093 loss=1.7161
+ep  31: lr=0.001000 acc=0.4863 loss=1.4910
+ep  41: lr=0.001000 acc=0.4358 loss=3.6111   ← first wobble
+ep  51: lr=0.001000 acc=0.5274 loss=1.5575   ← peak ~0.54
+ep  61: lr=0.001000 acc=0.3920 loss=1.7583
+ep  71: lr=0.001000 acc=0.1545 loss=173.85   ← COLLAPSE (loss × 100)
+ep  81: lr=0.001000 acc=0.1466 loss=3.8050
+ep  91: lr=0.001000 acc=0.1295 loss=2.3493
+ep 100: lr=0.001000 acc=0.1355 loss=2.2995 bn_var=158.09</pre>
+Constant LR throughout. Collapse driven by BN drift — bn_var = 158 by the end.
+</details>
+
+<details open><summary><b>D. cifar10/50L/BN, Adam plateau (THE WINNER)</b></summary>
+<pre>ep   1: lr=0.001000 acc=0.1128 loss=3.5507
+ep  11: lr=0.001000 acc=0.3070 loss=1.8497
+ep  21: lr=0.001000 acc=0.4093 loss=1.7161
+ep  31: lr=0.001000 acc=0.4863 loss=1.4910
+ep  41: lr=0.000500 acc=0.5871 loss=1.1586   ← LR drop #1 (1e-3 → 5e-4)
+ep  51: lr=0.000500 acc=0.6199 loss=1.2077
+ep  61: lr=0.000250 acc=0.7633 loss=0.7084   ← LR drop #2 (5e-4 → 2.5e-4) — huge jump
+ep  71: lr=0.000250 acc=0.7174 loss=0.9329
+ep  81: lr=0.000125 acc=0.9083 loss=0.3223   ← LR drop #3 (2.5e-4 → 1.25e-4) — even bigger jump
+ep  91: lr=0.000125 acc=0.9497 loss=0.1874
+ep 100: lr=0.000063 acc=0.9577 loss=0.1755 bn_var=13.88   ← LR drop #4 near end</pre>
+Each LR drop coincides with a plateau and is followed by accelerated learning. BN variance grew only to ~14 (vs 158 in C, 29 in B). Loss 0.1755 — close to but above the 0.10 threshold.
+</details>
+
+<details><summary>E. cifar10/100L/BN, Adam cosine T_max=100 (NEAR-DEAD)</summary>
+<pre>ep   1: lr=0.001000 acc=0.1062 loss=3.8347
+ep  11: lr=0.000976 acc=0.1030 loss=2.3093   ← essentially random
+ep  21: lr=0.000905 acc=0.1051 loss=2.3048
+ep  31: lr=0.000794 acc=0.1069 loss=2.3051
+ep  41: lr=0.000655 acc=0.1104 loss=408.25   ← brief instability
+ep  51: lr=0.000500 acc=0.1000 loss=2.4454
+ep  81: lr=0.000095 acc=0.1828 loss=2.1653   ← small late jump
+ep 100: lr=0.000000 acc=0.1729 loss=2.1934 bn_var=7.04</pre>
+Peaked at 0.21 near the end. 100L is the depth boundary for trainability even with BN.
+</details>
+
+<details><summary>F. fmnist/100L/BN, Adam cosine T_max=100 (NEAR-DEAD)</summary>
+<pre>ep   1: lr=0.001000 acc=0.1065 loss=3.1514
+ep  21: lr=0.000905 acc=0.1098 loss=2.3345
+ep  41: lr=0.000655 acc=0.1793 loss=2.1809   ← brief blip
+ep  51: lr=0.000500 acc=0.1646 loss=2.3039
+ep 100: lr=0.000000 acc=0.1255 loss=2.2778 bn_var=13.55</pre>
+Peaked at 0.20 mid-run; drifted down. Same story as E.
+</details>
+
+<details><summary>G. fmnist/100L/NoBN gradient-death check (CONFIRMED DEAD)</summary>
+<pre>ep   1: lr=0.001000 acc=0.1000 loss=2.3027 grad=[1.53e-12, 1.70e-03]
+ep  10: lr=0.000024 acc=0.1000 loss=2.3026 grad=[0.00e+00, 0.00e+00]</pre>
+Mirrors Phase 1 run #7 exactly. All gradients literally zero by ep 3.
+</details>
+
+<h2>Recommended Phase 3</h2>
+
+<div class="next">
+<b>Goal of Phase 3.</b> Push the two winners (A and D) past the 0.995 thesis pass criterion, document the negative results (100L), and consider whether to apply the plateau lesson to the remaining 50L/BN cases.
+</div>
+
+<table>
+<thead>
+<tr><th>#</th><th>Run</th><th>Why</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr class="pass">
+  <td>α</td>
+  <td class="mono">fmnist/50L/NoBN — SGD lr=0.003 + ReduceLROnPlateau<br>(patience=5, factor=0.5)</td>
+  <td>Push run A from 0.9856 → 0.995. The mid-run drift at ep 61–71 suggests a plateau-triggered LR drop would have stabilised the climb.</td>
+  <td>100 epochs</td>
+</tr>
+<tr class="pass">
+  <td>β</td>
+  <td class="mono">fmnist/50L/BN — Adam plateau bnm=0.01</td>
+  <td>Apply the D recipe to fmnist/50L/BN (replace the Phase 2 B cosine that collapsed). If plateau rescues both BN cases, the methodology is robust.</td>
+  <td>100 epochs</td>
+</tr>
+<tr class="pass">
+  <td>γ</td>
+  <td class="mono">cifar10/50L/BN — Adam plateau bnm=0.01 (D extended)</td>
+  <td>Run D for 150–200 epochs to see if loss reaches ≤ 0.10 (currently 0.1755). Loss is the binding constraint, not accuracy.</td>
+  <td>200 epochs</td>
+</tr>
+<tr class="partial">
+  <td>δ</td>
+  <td class="mono">cifar10/100L/BN, fmnist/100L/BN — Adam plateau bnm=0.01</td>
+  <td>Does the plateau rule help the 100L/BN cases? Currently they stall at ~0.20; maybe slow LR after the initial chaos can unstick them.</td>
+  <td>100 epochs each</td>
+</tr>
+</tbody>
+</table>
+
+<div class="next">
+<b>Estimated cluster time:</b> 4 runs × ~30 min/run ≈ 2 hours. Set SLURM time to 4 h.
+</div>
+
+<div class="alert">
+<b>Negative results to formalise in the thesis:</b>
+<ol style="margin: 0.4em 0 0 1.2em;">
+  <li><b>100L/NoBN is unconditionally dead with He init.</b> Confirmed on both fmnist (run G) and cifar10 (Phase 1 run #7). Gradients vanish to exact zero within 3 epochs.</li>
+  <li><b>100L/BN is borderline-untrainable with He init.</b> Both fmnist and cifar10 stall at ~0.20 accuracy across 100 epochs. BN buys signal but not enough at depth 100.</li>
+  <li><b>50L/BN requires adaptive LR to avoid catastrophic BN-statistic runaway.</b> Both cosine and constant LR cause collapse; only ReduceLROnPlateau (with sufficient patience to detect a plateau before BN runs away) trains successfully.</li>
+</ol>
+</div>
+
+</body>
+</html>

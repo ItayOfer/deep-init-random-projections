@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Diagnostic Phase 1 — Report</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 1000px; margin: 2em auto; padding: 0 1.5em; color: #222; line-height: 1.5; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: 0.3em; }
+  h2 { margin-top: 1.8em; border-bottom: 1px solid #ccc; padding-bottom: 0.2em; }
+  h3 { margin-top: 1.4em; }
+  table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 0.92em; }
+  th, td { border: 1px solid #ccc; padding: 0.4em 0.6em; text-align: left; }
+  th { background: #f4f4f4; }
+  tr.pass { background: #e8f5e9; }
+  tr.fail { background: #ffebee; }
+  tr.partial { background: #fff3e0; }
+  tr.dead { background: #eceff1; }
+  code, .mono { font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 0.88em; }
+  .verdict { font-weight: bold; }
+  .verdict.pass { color: #2e7d32; }
+  .verdict.fail { color: #c62828; }
+  .verdict.partial { color: #ef6c00; }
+  .verdict.dead { color: #455a64; }
+  .takeaway { background: #fffde7; border-left: 4px solid #fbc02d; padding: 0.6em 1em; margin: 0.8em 0; }
+  .next { background: #e3f2fd; border-left: 4px solid #1976d2; padding: 0.6em 1em; margin: 0.8em 0; }
+  .meta { color: #666; font-size: 0.9em; }
+  details { margin: 0.4em 0; }
+  summary { cursor: pointer; color: #1976d2; }
+  pre { background: #f5f5f5; padding: 0.6em; overflow-x: auto; font-size: 0.85em; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Diagnostic Phase 1 — Hypothesis Tests</h1>
+<p class="meta">7 short runs on the cluster.
+Source: <code>reports/results/diagnostic_phase1.json</code> · log: <code>fnn_diag_p1-165867.out</code></p>
+
+<div class="takeaway">
+<b>How to read this report.</b>
+<ul style="margin: 0.4em 0 0 1.2em;">
+  <li><b>What "30 epochs / 10 epochs" means.</b> 6 of the 7 runs (#1–#6) were trained for 30 epochs — short enough to be cheap, long enough to see whether the run trains, stalls, or collapses. Run #7 (cifar10/100L/NoBN) was capped at 10 epochs on purpose: we only needed to confirm gradient death, which happens within the first 3 epochs, so a longer run would have been wasted compute.</li>
+  <li><b>Primary metric throughout the report:</b> <code>eval_train_accuracy</code> — accuracy on the full training set evaluated in a clean forward pass (model in <code>eval()</code> mode, BN using running stats, no dropout). This is the same metric used in the thesis pass criterion (<code>eval_train_accuracy ≥ 0.995</code> and <code>eval_train_loss ≤ 0.10</code>). "Best" = peak across all epochs. "Final" = value at the last epoch.</li>
+  <li><b>LR column added below</b> so the "cosine decayed too fast" claim is directly visible: every cosine run has LR ≈ 0 by epoch 30.</li>
+</ul>
+</div>
+
+<h2>Key Plots</h2>
+
+<p><b>Figure 1.</b> <code>eval_train_accuracy</code> per epoch for all 7 runs. The dotted horizontal line is the 0.995 thesis pass threshold. Runs #2 and #6 (solid) climb cleanly; the cosine runs (#1, #3, #4, #5, dashed) plateau as their LR vanishes; #7 (dotted) is flat at 0.1 (random).</p>
+<p><img src="figures/phase1_eval_train_acc.png" alt="Eval-train accuracy trajectories" style="max-width:100%;"></p>
+
+<p><b>Figure 2.</b> LR schedules (log scale). The four cosine runs decay to ≈ 10⁻⁵ by epoch 30 — effectively no learning in the last 5 epochs. The const-LR winner (run #2) stays flat at 3×10⁻³ throughout. This is the direct evidence for Finding #5 below.</p>
+<p><img src="figures/phase1_lr_schedule.png" alt="LR schedules" style="max-width:100%;"></p>
+
+<h2>Summary Table</h2>
+<p class="meta">All accuracy values are <code>eval_train_accuracy</code> (clean forward pass on the full training set). "Best" = peak across all epochs. "Final" = value at the last completed epoch. <code>LR ep1 → epN</code> shows how the learning rate evolved (constant vs. cosine vs. effectively-zero).</p>
+<table>
+<thead>
+<tr><th>#</th><th>Hypothesis</th><th>Arch</th><th>Config</th><th>Epochs<br>trained</th><th>Best<br>eval_train_acc</th><th>@ep</th><th>Final<br>eval_train_acc</th><th>LR ep1 → epN</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr class="partial">
+  <td>1</td>
+  <td>fmnist/50L/NoBN — cosine instead of OneCycle</td>
+  <td>fmnist 50L NoBN</td>
+  <td class="mono">SGD, cosine, lr=0.01</td>
+  <td>30</td>
+  <td>0.8381</td><td>30</td><td>0.8381</td>
+  <td class="mono">1.0e-2 → 3.0e-5</td>
+  <td class="verdict partial">PARTIAL — LR ≈ 0 in last 5 ep, training froze</td>
+</tr>
+<tr class="pass">
+  <td>2</td>
+  <td>fmnist/50L/NoBN — constant lower LR</td>
+  <td>fmnist 50L NoBN</td>
+  <td class="mono">SGD, constant, lr=0.003</td>
+  <td>30</td>
+  <td><b>0.9656</b></td><td>29</td><td>0.9567</td>
+  <td class="mono">3.0e-3 → 3.0e-3</td>
+  <td class="verdict pass">WINNER — clean monotonic improvement</td>
+</tr>
+<tr class="partial">
+  <td>3</td>
+  <td>fmnist/50L/NoBN — Adam + cosine</td>
+  <td>fmnist 50L NoBN</td>
+  <td class="mono">Adam, cosine, lr=0.001</td>
+  <td>30</td>
+  <td>0.8771</td><td>30</td><td>0.8771</td>
+  <td class="mono">1.0e-3 → 1.4e-6</td>
+  <td class="verdict partial">PARTIAL — same cosine-decay-to-zero issue</td>
+</tr>
+<tr class="partial">
+  <td>4</td>
+  <td>cifar10/50L/BN — slow BN (bnm=0.01)</td>
+  <td>cifar10 50L BN</td>
+  <td class="mono">Adam, cosine, lr=0.001, bnm=0.01</td>
+  <td>30</td>
+  <td>0.5406</td><td>30</td><td>0.5406</td>
+  <td class="mono">1.0e-3 → 1.4e-6</td>
+  <td class="verdict partial">PARTIAL — needs longer run to see collapse</td>
+</tr>
+<tr class="fail">
+  <td>5</td>
+  <td>cifar10/50L/BN — slow BN + lower LR</td>
+  <td>cifar10 50L BN</td>
+  <td class="mono">Adam, cosine, lr=0.0003, bnm=0.01</td>
+  <td>30</td>
+  <td>0.2677</td><td>29</td><td>0.2672</td>
+  <td class="mono">3.0e-4 → 4.1e-7</td>
+  <td class="verdict fail">FAIL — LR too low to learn</td>
+</tr>
+<tr class="pass">
+  <td>6</td>
+  <td>fmnist/50L/BN — slow BN (bnm=0.01)</td>
+  <td>fmnist 50L BN</td>
+  <td class="mono">Adam, cosine, lr=0.001, bnm=0.01</td>
+  <td>30</td>
+  <td><b>0.9668</b></td><td>30</td><td>0.9668</td>
+  <td class="mono">1.0e-3 → 1.4e-6</td>
+  <td class="verdict pass">PROMISING — needs longer run to confirm</td>
+</tr>
+<tr class="dead">
+  <td>7</td>
+  <td>cifar10/100L/NoBN — gradient death check</td>
+  <td>cifar10 100L NoBN</td>
+  <td class="mono">Adam, cosine, lr=0.001</td>
+  <td>10 <span class="meta">(short on purpose — only confirming gradient death)</span></td>
+  <td>0.1000</td><td>1</td><td>0.1000</td>
+  <td class="mono">1.0e-3 → 2.5e-5</td>
+  <td class="verdict dead">CONFIRMED DEAD — gradients = 0 by ep 3</td>
+</tr>
+</tbody>
+</table>
+
+<h2>Comparison vs. Original Failing Runs (at epoch 30)</h2>
+<table>
+<thead>
+<tr><th>Architecture</th><th>Original (best12)</th><th>New (Phase 1)</th><th>Delta</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td>fmnist/50L/NoBN</td>
+  <td class="mono">SGD+OneCycle lr=0.01 → crash @ep22, final=0.8642</td>
+  <td class="mono">SGD const lr=0.003 → <b>0.9567</b> (still climbing)</td>
+  <td><b>+9.3 pts</b></td>
+</tr>
+<tr>
+  <td>fmnist/50L/BN</td>
+  <td class="mono">Adam+OneCycle bnm=0.05 → 0.8868 @ep39, collapsed @ep43</td>
+  <td class="mono">Adam+cosine bnm=0.01 → <b>0.9668</b> @ep30 (stable)</td>
+  <td><b>+8.0 pts</b> vs orig peak</td>
+</tr>
+<tr>
+  <td>cifar10/50L/BN</td>
+  <td class="mono">Adam+cosine bnm=0.05 → 0.5423 @ep38, collapsed @ep46</td>
+  <td class="mono">Adam+cosine bnm=0.01 → 0.5406 @ep30 (climbing)</td>
+  <td>~equal at ep30; collapse unknown</td>
+</tr>
+<tr>
+  <td>cifar10/100L/NoBN</td>
+  <td class="mono">Stuck at 0.1000 (random)</td>
+  <td class="mono">Stuck at 0.1000, grads = 0 by ep 3</td>
+  <td>Confirmed dead</td>
+</tr>
+</tbody>
+</table>
+
+<h2>Key Findings</h2>
+
+<div class="takeaway">
+<b>1. The fmnist/50L/NoBN crash is solved.</b> Constant SGD at lr=0.003 reaches 95.67% with monotonic improvement, no collapse, gradients healthy (min~0.09, max~2.4 across layers). The OneCycle LR ramp-up to 0.01 was the destabilizing factor, exactly as hypothesized.
+</div>
+
+<div class="takeaway">
+<b>2. Slower BN momentum (0.01) looks promising for fmnist/50L/BN.</b> At epoch 30, this configuration is at 96.68% — higher than the original ever reached. Critically, the BN running variance is growing slowly (1.77 → 2.29) without runaway. But the original collapse happened at epoch 43, so we MUST extend this to 60-100 epochs to know if the fix holds.
+</div>
+
+<div class="takeaway">
+<b>3. cifar10/50L/BN is ambiguous.</b> The slow-BN variant reached the same 0.54 as the original at the same point in training. We can't yet tell if it will collapse like the original — needs a longer run. Lowering LR further (0.0003) hurts learning too much.
+</div>
+
+<div class="takeaway">
+<b>4. cifar10/100L/NoBN is a clean negative result.</b> Gradient norms drop from ~10⁻³ to literally 0.0 within 3 epochs. He init absolutely cannot support 100L FC depth without normalization. This belongs in the thesis as a finding.
+</div>
+
+<div class="takeaway">
+<b>5. Cosine annealing over 30 epochs is misleading.</b> See <b>Figure 2</b> and the <code>LR ep1 → epN</code> column: every cosine run decays from its starting LR down to ≈ 10⁻⁵–10⁻⁶ by epoch 30, so the last ~5 epochs do essentially zero learning. The cosine variants (#1, #3, #4, #5) plateau at least partly because they ran out of LR budget, not because they truly converged or stabilized. For 30-epoch diagnostics, prefer constant LR or warmup-then-flat; reserve cosine for full-length runs where its <code>T_max</code> matches.
+</div>
+
+<h2>Detailed Trajectories</h2>
+<p class="meta">Per-epoch snapshot for each run. Columns: <code>lr</code> = current learning rate; <code>eval_train_acc</code> = accuracy on the full train set (model.eval()); <code>loss</code> = eval_train_loss; <code>grad=[min, max]</code> = per-layer gradient L2 norm range across all 50/100 layers; <code>bn_var</code> = mean of BN running variances.</p>
+
+<details><summary>1. fmnist_50L_nobn_sgd_cosine (cosine LR ramped down too fast)</summary>
+<pre>ep  1: lr=0.01000 eval_train_acc=0.1995 loss=1.8263
+ep  5: lr=0.00957 eval_train_acc=0.7391 loss=0.6899 grad=[8.9e-02, 9.0e-01]
+ep 10: lr=0.00794 eval_train_acc=0.7119 loss=0.7598 grad=[3.1e-01, 1.8e+00]
+ep 15: lr=0.00552 eval_train_acc=0.7867 loss=0.5978 grad=[1.7e-01, 1.4e+00]
+ep 20: lr=0.00297 eval_train_acc=0.7309 loss=0.7056 grad=[3.9e-01, 1.0e+00]
+ep 25: lr=0.00095 eval_train_acc=0.8236 loss=0.5122 grad=[1.8e-01, 4.8e-01]
+ep 30: lr=0.00003 eval_train_acc=0.8381 loss=0.4643 grad=[2.2e-01, 1.6e+00]</pre>
+Some instability in ep 10-22, recovered as LR decayed.
+</details>
+
+<details><summary>2. fmnist_50L_nobn_sgd_const_lr003 (WINNER — clean training)</summary>
+<pre>ep  1: lr=0.00300 eval_train_acc=0.7549 loss=0.6567
+ep  5: lr=0.00300 eval_train_acc=0.8834 loss=0.3287 grad=[2.5e-01, 5.7e+00]
+ep 10: lr=0.00300 eval_train_acc=0.9142 loss=0.2402 grad=[1.7e-01, 1.9e+00]
+ep 15: lr=0.00300 eval_train_acc=0.9258 loss=0.2116 grad=[1.2e-01, 2.0e+00]
+ep 20: lr=0.00300 eval_train_acc=0.9417 loss=0.1660 grad=[2.0e-01, 2.8e+00]
+ep 25: lr=0.00300 eval_train_acc=0.9485 loss=0.1410 grad=[7.9e-02, 2.4e+00]
+ep 30: lr=0.00300 eval_train_acc=0.9567 loss=0.1195 grad=[9.0e-02, 2.4e+00]</pre>
+Monotonic improvement, gradient norms stable.
+</details>
+
+<details><summary>3. fmnist_50L_nobn_adam_cosine</summary>
+<pre>ep  1: lr=0.00100 eval_train_acc=0.3477 loss=1.4261
+ep  5: lr=0.00096 eval_train_acc=0.7334 loss=0.6555 grad=[4.0e-02, 1.5e+00]
+ep 10: lr=0.00079 eval_train_acc=0.7393 loss=0.7121 grad=[5.8e-02, 2.4e+01]
+ep 15: lr=0.00055 eval_train_acc=0.8158 loss=0.5516 grad=[5.9e-02, 1.0e+00]
+ep 20: lr=0.00030 eval_train_acc=0.8474 loss=0.4757 grad=[2.4e-01, 1.3e+00]
+ep 25: lr=0.00010 eval_train_acc=0.8724 loss=0.4005 grad=[1.6e-01, 1.5e+00]
+ep 30: lr=0.00000 eval_train_acc=0.8771 loss=0.3832 grad=[3.3e-02, 6.9e-01]</pre>
+Slower than SGD; some gradient spikes (24x). LR fully decayed by end.
+</details>
+
+<details><summary>4. cifar10_50L_bn_adam_cosine_bnm001</summary>
+<pre>ep  1: lr=0.00100 eval_train_acc=0.1128 loss=3.5507
+ep  5: lr=0.00096 eval_train_acc=0.2302 loss=2.0384 bn_var=2.394
+ep 10: lr=0.00079 eval_train_acc=0.3058 loss=1.8566 bn_var=2.850
+ep 15: lr=0.00055 eval_train_acc=0.3719 loss=1.7039 bn_var=3.262
+ep 20: lr=0.00030 eval_train_acc=0.4365 loss=1.5578 bn_var=3.427
+ep 25: lr=0.00010 eval_train_acc=0.5028 loss=1.3795 bn_var=3.408
+ep 30: lr=0.00000 eval_train_acc=0.5406 loss=1.2670 bn_var=3.333</pre>
+BN var growing gradually, slight peak then mild decrease — no runaway. Climbing too slowly to know if it'd collapse.
+</details>
+
+<details><summary>5. cifar10_50L_bn_adam_cosine_lr0003_bnm001</summary>
+<pre>ep  1: lr=0.00030 eval_train_acc=0.1082 loss=3.5885
+ep  5: lr=0.00029 eval_train_acc=0.1184 loss=2.3443 grad=[1.6e-01, 4.5e+02] bn_var=1.256
+ep 10: lr=0.00024 eval_train_acc=0.1392 loss=2.2674 grad=[1.0e-01, 2.1e+02] bn_var=1.374
+ep 15: lr=0.00017 eval_train_acc=0.2038 loss=2.1081 bn_var=1.465
+ep 20: lr=0.00009 eval_train_acc=0.2410 loss=2.0161 bn_var=1.508
+ep 25: lr=0.00003 eval_train_acc=0.2623 loss=1.9642 bn_var=1.512
+ep 30: lr=0.00000 eval_train_acc=0.2672 loss=1.9488 bn_var=1.506</pre>
+Too slow to learn; very high max gradient (450) on early layers suggests instability.
+</details>
+
+<details><summary>6. fmnist_50L_bn_adam_cosine_bnm001 (PROMISING)</summary>
+<pre>ep  1: lr=0.00100 eval_train_acc=0.3973 loss=2.3532
+ep  5: lr=0.00096 eval_train_acc=0.8001 loss=0.5648 bn_var=1.769
+ep 10: lr=0.00079 eval_train_acc=0.8583 loss=0.4013 bn_var=2.102
+ep 15: lr=0.00055 eval_train_acc=0.8819 loss=0.3415 bn_var=2.369
+ep 20: lr=0.00030 eval_train_acc=0.9188 loss=0.2374 bn_var=2.439
+ep 25: lr=0.00010 eval_train_acc=0.9505 loss=0.1584 bn_var=2.378
+ep 30: lr=0.00000 eval_train_acc=0.9668 loss=0.1137 bn_var=2.290</pre>
+Smooth improvement; BN var stabilizes around 2.3-2.4 (no runaway).
+</details>
+
+<details><summary>7. cifar10_100L_nobn_gradient_death_check (CONFIRMED DEAD)</summary>
+<pre>ep  1: lr=0.00100 eval_train_acc=0.1000 loss=2.3027 grad=[1.11e-10, 1.09e-03]
+ep  2: grad=[8.3e-12, 2.4e-04]
+ep  3+: grad=[0.0, 0.0]  ← all gradients exactly zero
+ep 10: lr=0.00002 eval_train_acc=0.1000 loss=2.3026 grad=[0.0, 0.0]</pre>
+At ep 1, gradient ratio max/min = 9.88M (already broken). All gradients literally zero by ep 3.
+</details>
+
+<h2>Recommended Phase 2 (revised)</h2>
+
+<div class="next">
+<b>Goal.</b> Confirm Phase 1 winners under longer training (100 epochs), resolve the <code>cifar10/50L/BN</code> ambiguity with a constant-vs-adaptive A/B test, and add symmetric gradient-death coverage for <code>fmnist/100L/NoBN</code>.
+</div>
+
+<h3 style="margin-top:1em;">LR-schedule choice</h3>
+<p>Phase 1's "cosine decayed too fast" issue was not a problem with cosine itself — it was a <i>mismatch</i> between <code>T_max</code> (30) and the actual epoch budget. For Phase 2 (100 epochs), <b>cosine with <code>T_max=100</code> is the correct, reproducible schedule</b> for the runs we expect to train smoothly.</p>
+<p>For the one ambiguous architecture — <code>cifar10/50L/BN</code> — we add a <b>constant-vs-plateau A/B test</b>. <code>ReduceLROnPlateau</code> (patience=5, factor=0.5, monitor <code>eval_train_loss</code>) is informative here: if the run collapses, we expect to see the LR drop just before / during the collapse; if the run climbs cleanly, we'll see no LR drops at all. Either outcome is a clear signal.</p>
+
+<h3 style="margin-top:1em;">Run plan</h3>
+<table>
+<thead>
+<tr><th>#</th><th>Run</th><th>LR schedule</th><th>Why</th><th>Epochs</th></tr>
+</thead>
+<tbody>
+<tr class="pass">
+  <td>A</td>
+  <td class="mono">fmnist/50L/NoBN, SGD lr=0.003</td>
+  <td class="mono">constant</td>
+  <td>Phase 1 winner, extended. Confirm <code>≥ 0.995</code> reachable.</td>
+  <td>100</td>
+</tr>
+<tr class="pass">
+  <td>B</td>
+  <td class="mono">fmnist/50L/BN, Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">cosine T_max=100</td>
+  <td>Verify no collapse past epoch 43 with a properly matched schedule.</td>
+  <td>100</td>
+</tr>
+<tr class="partial">
+  <td>C</td>
+  <td class="mono">cifar10/50L/BN, Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">constant</td>
+  <td>Control. Does collapse happen without any scheduler influence?</td>
+  <td>100</td>
+</tr>
+<tr class="partial">
+  <td>D</td>
+  <td class="mono">cifar10/50L/BN, Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">ReduceLROnPlateau<br>(patience=5, factor=0.5,<br>monitor eval_train_loss)</td>
+  <td><b>Replaces the bnm=0.005 variant.</b> Does LR-drop correlate with collapse, or does adaptive LR rescue the run?</td>
+  <td>100</td>
+</tr>
+<tr class="partial">
+  <td>E</td>
+  <td class="mono">cifar10/100L/BN, Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">cosine T_max=100</td>
+  <td>Same recipe on 100L (best rescue candidate).</td>
+  <td>100</td>
+</tr>
+<tr class="partial">
+  <td>F</td>
+  <td class="mono">fmnist/100L/BN, Adam lr=0.001 bnm=0.01</td>
+  <td class="mono">cosine T_max=100</td>
+  <td>Same recipe, fmnist side.</td>
+  <td>100</td>
+</tr>
+<tr class="dead">
+  <td>G</td>
+  <td class="mono">fmnist/100L/NoBN, Adam lr=0.001</td>
+  <td class="mono">cosine (short)</td>
+  <td><b>New — symmetric coverage with Phase 1 run #7.</b> Confirm gradient death is a depth-without-norm phenomenon, not dataset-specific.</td>
+  <td>10</td>
+</tr>
+</tbody>
+</table>
+
+<div class="meta">
+<b>Architecture coverage check.</b> The original sweep is {fmnist, cifar10} × {BN, NoBN} × {30L, 50L, 100L} = 12 architectures. The 7 failing arches are: both 50L/NoBN, both 50L/BN, both 100L/BN, both 100L/NoBN. Phase 2 covers all of them: 50L/NoBN→A; 50L/BN→B+C+D; 100L/BN→E+F; 100L/NoBN→G (Phase 2) + run #7 (Phase 1).
+</div>
+
+<div class="next">
+<b>Cluster wiring.</b> Runner: <code>cluster/run_phase2.py</code>. SLURM script: <code>cluster/fnn_he_diagnostic_phase2.sub</code> (8 h limit, diagnostics every 10 ep, checkpoints every 25 ep, output to <code>reports/results/diagnostic_phase2.json</code>). New scheduler <code>"plateau"</code> support added in <code>src/rp_study/experiments/supervised_training.py</code> and <code>src/rp_study/config.py</code>.
+</div>
+
+<div class="next">
+<b>Estimated cluster time.</b> 6 × 100-ep runs + 1 × 10-ep death check. 100L runs are ~2× slower than 50L because of depth. Budget: ~4 h on a single GPU. SLURM time set to 8 h for safety.
+</div>
+
+<div class="takeaway">
+<b>Pre-confirmed (CPU smoke test).</b> A 2-epoch CPU run of <code>G_fmnist_100L_nobn_gradient_death_check</code> already shows the gradient-death signature: <code>grad min = 1.46e-10</code>, <code>grad ratio = 3.2&nbsp;million</code> at epoch 1, accuracy locked at 0.1000. The cluster run is expected to confirm this within 3 epochs (matching run #7 on cifar10).
+</div>
+
+<div class="takeaway">
+<b>Negative result to document for thesis:</b><br>
+cifar10/100L/NoBN (confirmed in Phase 1) and fmnist/100L/NoBN (to be confirmed in Phase 2 run G) cannot be trained with He init. Gradients become exactly zero within 3 epochs.
+This is a meaningful theoretical observation, not a tuning failure.
+</div>
+
+</body>
+</html>

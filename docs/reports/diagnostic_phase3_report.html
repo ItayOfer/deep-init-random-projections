@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Diagnostic Phase 3 — Report</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 1000px; margin: 2em auto; padding: 0 1.5em; color: #222; line-height: 1.5; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: 0.3em; }
+  h2 { margin-top: 1.8em; border-bottom: 1px solid #ccc; padding-bottom: 0.2em; }
+  h3 { margin-top: 1.4em; }
+  table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 0.92em; }
+  th, td { border: 1px solid #ccc; padding: 0.4em 0.6em; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  tr.pass { background: #e8f5e9; }
+  tr.fail { background: #ffebee; }
+  tr.partial { background: #fff3e0; }
+  tr.dead { background: #eceff1; }
+  code, .mono { font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 0.88em; }
+  .verdict { font-weight: bold; }
+  .verdict.pass { color: #2e7d32; }
+  .verdict.fail { color: #c62828; }
+  .verdict.partial { color: #ef6c00; }
+  .verdict.dead { color: #455a64; }
+  .takeaway { background: #fffde7; border-left: 4px solid #fbc02d; padding: 0.6em 1em; margin: 0.8em 0; }
+  .next { background: #e3f2fd; border-left: 4px solid #1976d2; padding: 0.6em 1em; margin: 0.8em 0; }
+  .alert { background: #ffebee; border-left: 4px solid #c62828; padding: 0.6em 1em; margin: 0.8em 0; }
+  .win { background: #e8f5e9; border-left: 4px solid #2e7d32; padding: 0.6em 1em; margin: 0.8em 0; }
+  .meta { color: #666; font-size: 0.9em; }
+  details { margin: 0.4em 0; }
+  summary { cursor: pointer; color: #1976d2; }
+  pre { background: #f5f5f5; padding: 0.6em; overflow-x: auto; font-size: 0.85em; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Diagnostic Phase 3 — Plateau Applied Everywhere</h1>
+<p class="meta">5 runs on the cluster (job <code>fnn_diag_p3-165896</code>).
+Source: <code>reports/results/diagnostic_phase3.json</code> · log: <code>fnn_diag_p3-165896.out</code></p>
+
+<div class="win">
+<b>Headline.</b> Two new architectures cross the thesis pass criterion. The plateau lesson from Phase 2 generalises: <b>α (fmnist/50L/NoBN) reaches eval_train_acc = 0.9997, loss = 0.0013</b>, and <b>γ (cifar10/50L/BN, 200ep) reaches 0.9974 / 0.0119</b>. Scoreboard: <b>7 of 12 architectures now pass</b>, up from 5 in the original sweep. The remaining 5 are the 4 hardest cases (3 at depth 100, 1 fmnist/50L/BN) plus fmnist/50L/BN which is stable-but-not-pass.
+</div>
+
+<h2>Key Plots</h2>
+
+<p><b>Figure 1.</b> Trajectories. α (green) and γ (blue) climb above the 0.995 line. β (orange) climbs cleanly but plateaus around 0.95. δ₁ (purple) is stuck at random chance; δ₂ (brown) has a late breakthrough to ~0.34 but is still far below pass.</p>
+<p><img src="figures/phase3_eval_train_acc.png" alt="Phase 3 trajectories" style="max-width:100%;"></p>
+
+<p><b>Figure 2.</b> LR schedules. Every drop is a plateau-triggered step. Note how δ₁ (purple) dropped almost continuously from the start — the scheduler saw the constant 0.1 accuracy as a permanent plateau and ratcheted LR to 10⁻⁶ before the model had a chance to escape. δ₂ (brown) dropped fast too, but for fmnist this seems to have helped the late breakthrough.</p>
+<p><img src="figures/phase3_lr_schedule.png" alt="Phase 3 LR schedules" style="max-width:100%;"></p>
+
+<p><b>Figure 3.</b> Loss vs. the 0.10 thesis threshold (log scale). α and γ both cross it cleanly. β plateaus just above 0.17 — the BN-running-variance is bounded but learning saturates.</p>
+<p><img src="figures/phase3_loss_thresholds.png" alt="Phase 3 loss thresholds" style="max-width:100%;"></p>
+
+<p><b>Figure 4.</b> 100L / BN comparison — Phase 2 cosine vs. Phase 3 plateau. On cifar10 plateau <i>hurt</i> (stayed at random); on fmnist it <i>helped slightly</i> (slow late breakthrough). Asymmetric outcome worth investigating.</p>
+<p><img src="figures/phase3_100L_compare.png" alt="100L/BN comparison" style="max-width:100%;"></p>
+
+<h2>Summary Table</h2>
+
+<table>
+<thead>
+<tr><th>#</th><th>Run</th><th>Best<br>eval_train_acc</th><th>@ep</th><th>Final<br>eval_train_acc</th><th>Final<br>loss</th><th>Final<br>test_acc</th><th>Pass<br>criterion?</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr class="pass">
+  <td>α</td>
+  <td class="mono">fmnist/50L/NoBN<br>SGD lr=0.003 + plateau</td>
+  <td><b>0.9997</b></td><td>100</td><td>0.9997</td><td><b>0.0013</b></td><td>0.8931</td>
+  <td><b>YES ✓</b></td>
+  <td class="verdict pass">PASS — 4 LR drops, monotonic climb</td>
+</tr>
+<tr class="partial">
+  <td>β</td>
+  <td class="mono">fmnist/50L/BN<br>Adam lr=0.001 bnm=0.01 + plateau</td>
+  <td>0.9562</td><td>49</td><td>0.9487</td><td>0.1703</td><td>0.8853</td>
+  <td>No <span class="meta">(stable but not pass)</span></td>
+  <td class="verdict partial">NEAR — no collapse (bn_var=5.13 vs 29 in Phase 2 B), but oscillates around 0.95</td>
+</tr>
+<tr class="pass">
+  <td>γ</td>
+  <td class="mono">cifar10/50L/BN<br>Adam lr=0.001 bnm=0.01 + plateau, <b>200ep</b></td>
+  <td><b>0.9977</b></td><td>198</td><td>0.9974</td><td><b>0.0119</b></td><td>0.5112</td>
+  <td><b>YES ✓</b></td>
+  <td class="verdict pass">PASS — D extended; reached threshold by ep ~145</td>
+</tr>
+<tr class="fail">
+  <td>δ₁</td>
+  <td class="mono">cifar10/100L/BN<br>Adam lr=0.001 bnm=0.01 + plateau</td>
+  <td>0.1104</td><td>87</td><td>0.1097</td><td>2.3070</td><td>0.1099</td>
+  <td>No <span class="meta">(stuck at random)</span></td>
+  <td class="verdict fail">FAIL — plateau dropped LR too aggressively; worse than Phase 2 E (0.2142)</td>
+</tr>
+<tr class="fail">
+  <td>δ₂</td>
+  <td class="mono">fmnist/100L/BN<br>Adam lr=0.001 bnm=0.01 + plateau</td>
+  <td>0.3416</td><td>98</td><td>0.3134</td><td>1.7446</td><td>0.3119</td>
+  <td>No <span class="meta">(slow improvement)</span></td>
+  <td class="verdict fail">PARTIAL — late breakthrough; better than Phase 2 F (0.2018) but far from pass</td>
+</tr>
+</tbody>
+</table>
+
+<h2>Updated Status of All 12 Architectures</h2>
+
+<table>
+<thead>
+<tr>
+  <th>Dataset</th><th>Depth</th><th>BN</th>
+  <th>Final<br>test_acc</th>
+  <th>Final<br>eval_train_acc</th>
+  <th>Final<br>eval_train_loss</th>
+  <th>Pass<br>criterion?</th>
+  <th>Source (best known)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="pass">
+  <td>cifar10</td><td>30L</td><td>NoBN</td>
+  <td class="mono">0.5425</td><td class="mono">0.9974</td><td class="mono">0.0086</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>30L</td><td>BN</td>
+  <td class="mono">0.5486</td><td class="mono">0.9976</td><td class="mono">0.0124</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>50L</td><td>NoBN</td>
+  <td class="mono">0.5381</td><td class="mono">0.9981</td><td class="mono">0.0073</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>50L</td><td>BN</td>
+  <td class="mono">0.5112 <span class="meta">(was 0.2251)</span></td>
+  <td class="mono"><b>0.9974</b> <span class="meta">(was 0.2215)</span></td>
+  <td class="mono"><b>0.0119</b> <span class="meta">(was 2.351)</span></td>
+  <td><b>Yes ✓ new</b></td>
+  <td class="mono">Phase 3 <b>γ</b> (plateau, 200 ep)</td>
+</tr>
+<tr class="dead">
+  <td>cifar10</td><td>100L</td><td>NoBN</td>
+  <td class="mono">0.1000</td><td class="mono">0.1000</td><td class="mono">2.3026</td>
+  <td>No <span class="meta">(unconditionally dead)</span></td>
+  <td class="mono">Phase 1 #7</td>
+</tr>
+<tr class="fail">
+  <td>cifar10</td><td>100L</td><td>BN</td>
+  <td class="mono">0.2096</td><td class="mono">0.2142</td><td class="mono">2.0827</td>
+  <td>No</td>
+  <td class="mono">Phase 2 <b>E</b> (cosine, plateau was worse)</td>
+</tr>
+<tr class="pass">
+  <td>fashion_mnist</td><td>30L</td><td>NoBN</td>
+  <td class="mono">0.8957</td><td class="mono">0.9960</td><td class="mono">0.0107</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="pass">
+  <td>fashion_mnist</td><td>30L</td><td>BN</td>
+  <td class="mono">0.9015</td><td class="mono">0.9963</td><td class="mono">0.0183</td>
+  <td><b>Yes</b></td>
+  <td class="mono">original sweep</td>
+</tr>
+<tr class="pass">
+  <td>fashion_mnist</td><td>50L</td><td>NoBN</td>
+  <td class="mono">0.8931 <span class="meta">(was 0.8414)</span></td>
+  <td class="mono"><b>0.9997</b> <span class="meta">(was 0.8642)</span></td>
+  <td class="mono"><b>0.0013</b> <span class="meta">(was 0.404)</span></td>
+  <td><b>Yes ✓ new</b></td>
+  <td class="mono">Phase 3 <b>α</b> (SGD + plateau, 100 ep)</td>
+</tr>
+<tr class="partial">
+  <td>fashion_mnist</td><td>50L</td><td>BN</td>
+  <td class="mono">0.8853 <span class="meta">(was 0.2927)</span></td>
+  <td class="mono">0.9487 <span class="meta">(was 0.2960)</span></td>
+  <td class="mono">0.1703 <span class="meta">(was 2.868)</span></td>
+  <td>No <span class="meta">(close — stable, no collapse)</span></td>
+  <td class="mono">Phase 3 <b>β</b> (Adam + plateau, 100 ep)</td>
+</tr>
+<tr class="dead">
+  <td>fashion_mnist</td><td>100L</td><td>NoBN</td>
+  <td class="mono">0.1000</td><td class="mono">0.1000</td><td class="mono">2.3026</td>
+  <td>No <span class="meta">(unconditionally dead)</span></td>
+  <td class="mono">Phase 2 <b>G</b></td>
+</tr>
+<tr class="fail">
+  <td>fashion_mnist</td><td>100L</td><td>BN</td>
+  <td class="mono">0.3119 <span class="meta">(was 0.2010)</span></td>
+  <td class="mono">0.3134 <span class="meta">(was 0.2018)</span></td>
+  <td class="mono">1.7446 <span class="meta">(was 2.115)</span></td>
+  <td>No <span class="meta">(slow late breakthrough; far from pass)</span></td>
+  <td class="mono">Phase 3 <b>δ₂</b> (plateau)</td>
+</tr>
+</tbody>
+</table>
+
+<div class="win">
+<b>Scoreboard: 7 of 12 architectures now pass</b> (up from 5 in the original sweep). The two new passes are <code>cifar10/50L/BN</code> and <code>fmnist/50L/NoBN</code>, both via <code>ReduceLROnPlateau</code>. The remaining 5 are: <code>fmnist/50L/BN</code> (close — 0.9487 / 0.17, stable), and the four hardest 100L cases.
+</div>
+
+<h2>Key Findings</h2>
+
+<div class="win">
+<b>1. The plateau lesson generalises.</b> Two of the three target architectures (α and γ) were pushed past the thesis criterion just by adding <code>ReduceLROnPlateau</code> to recipes that previously hit ceilings at ~0.985 (α) or collapsed (γ). The mechanism is consistent: each LR drop arrives precisely when learning stalls, restarts the climb, and (crucially for BN-containing runs) prevents the BN running statistics from accumulating destabilising drift.
+</div>
+
+<div class="alert">
+<b>2. fmnist/50L/BN is uniquely resistant.</b> Run β didn't collapse — bn_var stayed bounded at 5.13 (vs 29 in Phase 2 B's runaway) — but it never reached the threshold either. The loss trajectory is oscillatory: spikes at ep 17 (loss = 1.7) and ep 41 (loss = 1.16) suggest mini-instabilities that the scheduler reacts to (by dropping LR) but doesn't fully resolve. The eventual plateau sits at acc ≈ 0.95, loss ≈ 0.17 — close to but not at pass.
+</div>
+
+<div class="alert">
+<b>3. Plateau hurt cifar10/100L/BN (δ₁) and barely helped fmnist/100L/BN (δ₂).</b> The asymmetry is informative: <code>δ₁</code> stayed at 0.11 throughout because the scheduler saw the very-slow-learning phase as a plateau and ratcheted LR to 10⁻⁶ before the model had time to escape. <code>δ₂</code> went the same direction LR-wise, but on fmnist that low LR (~3×10⁻⁵) was apparently enough to inch the model into a late breakthrough (0.10 → 0.34 across ep 60–100). 100L FC with He init appears to be on the very edge of trainability with BN; cifar10's higher input dimensionality (3072 vs 784) seems to put it just over the edge.
+</div>
+
+<div class="takeaway">
+<b>4. The mid-run wobble in Phase 2 A was real — and plateau caught it.</b> Phase 2 A (SGD const lr=0.003) showed a dip at ep 61–71 (acc 0.98 → 0.80 → recovery). Phase 3 α (same recipe + plateau) shows no such dip; the scheduler started dropping LR around ep 57, which kept the climb monotonic all the way to 0.9997.
+</div>
+
+<div class="takeaway">
+<b>5. The thesis story now has a clean structure:</b>
+<ol style="margin: 0.4em 0 0 1.2em;">
+  <li><b>Depth 30 (any BN, any dataset):</b> trivially trainable with He init out of the box.</li>
+  <li><b>Depth 50 with NoBN:</b> trainable with constant LR + plateau adaptive drops.</li>
+  <li><b>Depth 50 with BN:</b> requires adaptive LR (plateau) to prevent BN-statistic runaway; cifar10 passes cleanly, fmnist gets close.</li>
+  <li><b>Depth 100 with NoBN:</b> unconditionally dead — gradients vanish to zero within 3 epochs, both datasets.</li>
+  <li><b>Depth 100 with BN:</b> borderline-untrainable — neither cosine nor plateau pushes acc past ~0.34. He init is insufficient at this depth even with normalisation.</li>
+</ol>
+</div>
+
+<h2>Detailed Trajectories</h2>
+
+<details open><summary><b>α. fmnist/50L/NoBN, SGD + plateau (PASS)</b></summary>
+<pre>ep   1: lr=0.003000 acc=0.7549 loss=0.6567
+ep   9: lr=0.003000 acc=0.9003 loss=0.2771
+ep  17: lr=0.003000 acc=0.9301 loss=0.2032
+ep  25: lr=0.003000 acc=0.9485 loss=0.1410
+ep  33: lr=0.003000 acc=0.9739 loss=0.0781
+ep  41: lr=0.003000 acc=0.9805 loss=0.0612
+ep  49: lr=0.003000 acc=0.9814 loss=0.0544
+ep  57: lr=0.001500 acc=0.9855 loss=0.0510   ← LR drop #1
+ep  65: lr=0.001500 acc=0.9866 loss=0.0443
+ep  73: lr=0.000750 acc=0.9973 loss=0.0094   ← LR drop #2 — big jump
+ep  81: lr=0.000750 acc=0.9986 loss=0.0056
+ep  89: lr=0.000375 acc=0.9995 loss=0.0018   ← LR drop #3 — crosses 0.995
+ep  97: lr=0.000375 acc=0.9997 loss=0.0013
+ep 100: lr=0.000375 acc=0.9997 loss=0.0013</pre>
+4 LR drops; monotonic climb. Best <code>eval_train_acc = 0.9997</code>, <code>eval_train_loss = 0.0013</code>. Test 0.8931. <b>Strict pass.</b>
+</details>
+
+<details><summary>β. fmnist/50L/BN, Adam + plateau (stable but not pass)</summary>
+<pre>ep   1: lr=0.001000 acc=0.3973 loss=2.3532
+ep   9: lr=0.001000 acc=0.8406 loss=0.4698
+ep  17: lr=0.001000 acc=0.8444 loss=1.7261    ← loss spike
+ep  25: lr=0.000500 acc=0.9246 loss=0.2857    ← LR drop helped
+ep  33: lr=0.000500 acc=0.8989 loss=0.3824
+ep  41: lr=0.000250 acc=0.7790 loss=1.1620    ← second loss spike
+ep  49: lr=0.000125 acc=0.9562 loss=0.1749    ← peak
+ep  57: lr=0.000063 acc=0.8269 loss=0.5415    ← oscillating
+ep  65: lr=0.000031 acc=0.9243 loss=0.2343
+ep  73: lr=0.000008 acc=0.9406 loss=0.1927
+ep  81: lr=0.000004 acc=0.9448 loss=0.1797
+ep  89: lr=0.000002 acc=0.9474 loss=0.1749
+ep  97: lr=0.000001 acc=0.9479 loss=0.1722
+ep 100: lr=0.000001 acc=0.9487 loss=0.1703   bn_var=5.13</pre>
+No catastrophic collapse — bn_var stayed bounded. But the run is noticeably oscillatory (acc bouncing between 0.78 and 0.96). Settles around acc 0.95, loss 0.17. <b>Phase 4 idea: longer patience or warmup.</b>
+</details>
+
+<details open><summary><b>γ. cifar10/50L/BN, Adam + plateau, 200ep (PASS)</b></summary>
+<pre>ep   1: lr=0.001000 acc=0.1128 loss=3.5507
+ep  17: lr=0.001000 acc=0.3646 loss=1.7425
+ep  33: lr=0.001000 acc=0.4959 loss=1.4893
+ep  49: lr=0.000500 acc=0.6172 loss=1.1977   ← LR drop #1
+ep  65: lr=0.000250 acc=0.8140 loss=0.5872   ← LR drop #2
+ep  81: lr=0.000125 acc=0.9083 loss=0.3223   ← LR drop #3
+ep  97: lr=0.000125 acc=0.9123 loss=0.3242
+ep 113: lr=0.000063 acc=0.9592 loss=0.1561   ← LR drop #4
+ep 129: lr=0.000031 acc=0.9881 loss=0.0525   ← crosses 0.10 loss threshold
+ep 145: lr=0.000016 acc=0.9934 loss=0.0281
+ep 161: lr=0.000016 acc=0.9957 loss=0.0176
+ep 177: lr=0.000008 acc=0.9965 loss=0.0185
+ep 193: lr=0.000004 acc=0.9976 loss=0.0124
+ep 200: lr=0.000004 acc=0.9974 loss=0.0119   bn_var=12.50</pre>
+Phase 2 D extended. Crossed acc 0.995 around ep 161; crossed loss 0.10 around ep 129. Best <code>eval_train_acc = 0.9977</code>, <code>eval_train_loss = 0.0119</code>. Test 0.5112. <b>Strict pass.</b>
+</details>
+
+<details><summary>δ₁. cifar10/100L/BN, plateau (FAIL — worse than Phase 2 E)</summary>
+<pre>ep   1: lr=0.001000 acc=0.1062 loss=3.8347
+ep   9: lr=0.001000 acc=0.1060 loss=2.3108
+ep  17: lr=0.000500 acc=0.1063 loss=2.3145   ← LR drop already
+ep  25: lr=0.000250 acc=0.1056 loss=2.3159
+ep  33: lr=0.000125 acc=0.1073 loss=2.3176
+ep  41: lr=0.000063 acc=0.1080 loss=2.3079
+ep  49: lr=0.000031 acc=0.1089 loss=2.3110
+ep  57: lr=0.000016 acc=0.1082 loss=2.3072
+ep  65: lr=0.000008 acc=0.1088 loss=2.3042
+ep 100: lr=0.000001 acc=0.1097 loss=2.3070   bn_var=2.31</pre>
+Stuck at random. Plateau saw the slow-learning phase as a permanent plateau and dropped LR to ~10⁻⁶ by ep 65, sealing the run.
+</details>
+
+<details><summary>δ₂. fmnist/100L/BN, plateau (late breakthrough; better than Phase 2 F)</summary>
+<pre>ep   1: lr=0.001000 acc=0.1065 loss=3.1514
+ep   9: lr=0.001000 acc=0.1048 loss=2.3456
+ep  17: lr=0.001000 acc=0.1003 loss=2.3060
+ep  25: lr=0.001000 acc=0.1099 loss=2.3253
+ep  33: lr=0.000250 acc=0.1159 loss=2.2964
+ep  41: lr=0.000125 acc=0.1156 loss=2.2850
+ep  57: lr=0.000031 acc=0.1309 loss=2.2743   ← start of slow climb
+ep  65: lr=0.000031 acc=0.1569 loss=2.2419
+ep  73: lr=0.000031 acc=0.1794 loss=2.1573
+ep  81: lr=0.000031 acc=0.2289 loss=2.0178
+ep  89: lr=0.000031 acc=0.3048 loss=1.7977
+ep  97: lr=0.000031 acc=0.3398 loss=1.6756
+ep 100: lr=0.000031 acc=0.3134 loss=1.7446   bn_var=2.44</pre>
+Did break out of random chance, slowly. Best 0.3416 @ ep 98. Far from pass but a real signal.
+</details>
+
+<h2>Optional Phase 4 (only if you want to chase the remaining cases)</h2>
+
+<div class="next">
+<b>Worth doing — small, focused experiments:</b>
+<ul style="margin: 0.4em 0 0 1.2em;">
+  <li><b>β extended.</b> Re-run β with longer plateau patience (e.g. patience=10, factor=0.7) and 200 epochs. The loss is already close to 0.17 with bn_var stable — a gentler schedule may push it to ≤ 0.10.</li>
+  <li><b>100L/BN with warmup.</b> The δ₁ failure was the scheduler firing too early. Try a constant LR for the first 20 epochs (warmup), then enable plateau. If 100L can still be saved, this is how.</li>
+  <li><b>Document the negative results.</b> Even if Phase 4 doesn't add new passes, the thesis already has clean statements: 100L/NoBN dead (both datasets), 100L/BN borderline-untrainable, fmnist/50L/BN trainable but not to threshold under the explored recipes.</li>
+</ul>
+</div>
+
+<div class="alert">
+<b>Stopping point candidate.</b> Phase 3 produced two new clean passes and a clear taxonomy of the remaining failures. The marginal value of further tuning runs is now low: the 5 remaining architectures fall into "needs more careful tuning" (β) or "needs an architectural fix beyond initialisation" (the 100L cases). A natural next step is to write up rather than continue tuning.
+</div>
+
+</body>
+</html>

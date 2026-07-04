@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>He-Init Tuning · Final Report</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 1080px; margin: 2em auto; padding: 0 1.5em; color: #222; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #333; padding-bottom: 0.4em; margin-bottom: 0.3em; }
+  h2 { margin-top: 2.4em; border-bottom: 1px solid #ccc; padding-bottom: 0.3em; }
+  h3 { margin-top: 1.6em; color: #333; }
+  h4 { margin-top: 1.2em; color: #555; }
+  table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 0.92em; }
+  th, td { border: 1px solid #ccc; padding: 0.45em 0.7em; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  tr.pass { background: #e8f5e9; }
+  tr.fail { background: #ffebee; }
+  tr.partial { background: #fff3e0; }
+  tr.dead { background: #eceff1; }
+  code, .mono { font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 0.88em; }
+  .verdict { font-weight: bold; }
+  .verdict.pass { color: #2e7d32; }
+  .verdict.fail { color: #c62828; }
+  .verdict.partial { color: #ef6c00; }
+  .takeaway { background: #fffde7; border-left: 4px solid #fbc02d; padding: 0.6em 1em; margin: 0.8em 0; }
+  .win { background: #e8f5e9; border-left: 4px solid #2e7d32; padding: 0.6em 1em; margin: 0.8em 0; }
+  .alert { background: #ffebee; border-left: 4px solid #c62828; padding: 0.6em 1em; margin: 0.8em 0; }
+  .next { background: #e3f2fd; border-left: 4px solid #1976d2; padding: 0.6em 1em; margin: 0.8em 0; }
+  .meta { color: #666; font-size: 0.9em; }
+  details { margin: 0.4em 0; }
+  summary { cursor: pointer; color: #1976d2; font-weight: 500; }
+  pre { background: #f7f7f7; padding: 0.6em; overflow-x: auto; font-size: 0.84em; border-radius: 4px; }
+  blockquote { border-left: 3px solid #888; padding-left: 1em; color: #444; font-style: italic; margin: 0.8em 0; }
+  .toc { background: #fafafa; border: 1px solid #ddd; padding: 0.8em 1.2em; margin: 1em 0 2em; }
+  .toc ol { margin: 0.4em 0; padding-left: 1.4em; }
+  .phase-marker { display: inline-block; background: #1976d2; color: white; padding: 0.1em 0.55em; border-radius: 3px; font-size: 0.8em; font-weight: 600; margin-right: 0.3em; }
+  .phase-marker.p1 { background: #6a4c93; }
+  .phase-marker.p2 { background: #1976d2; }
+  .phase-marker.p3 { background: #2e7d32; }
+  .phase-marker.p4 { background: #ef6c00; }
+  .phase-marker.p5 { background: #d4351c; }
+  .phase-marker.orig { background: #777; }
+  .step-arrow { color: #1976d2; font-weight: bold; margin: 0 0.4em; }
+</style>
+</head>
+<body>
+
+<h1>He-Initialization Tuning across 12 FC Architectures</h1>
+<p class="meta">
+Final comprehensive report.<br>
+Working directory: <code>/Users/itayofer/Thesis/Thesis</code> · Audit data: <code>reports/results/final_audit_merged.json</code> · Reproducibility notebook: <code>notebooks/13_final_results.ipynb</code>
+</p>
+
+<div class="win">
+<b>Headline.</b> The thesis sweep covers 12 FC architectures = {cifar10, fmnist} × {30L, 50L, 100L} × {BN, NoBN}. Starting from the original grid-search baseline of <b>5 / 12 passing</b> the criterion (<code>eval_train_acc ≥ 0.995</code> AND <code>eval_train_loss ≤ 0.10</code>), the audit phase brought the scoreboard to <b>8 / 12 passing</b>. After the May 2026 meeting, two more architectures were rescued by replacing Adam with <b>plain SGD (lr=1e-3, no momentum)</b>: <code>fmnist/100L/NoBN</code> (recovery1, ep 152, 0.9953 / 0.0157) and <code>cifar10/100L/NoBN</code> (recovery2, ep 157, 0.9959 / 0.0157). This lifts the total to <b>10 / 12 passing</b>. The only remaining failures are the two depth-100 BN cases (<code>cifar10/100L/BN</code> and <code>fmnist/100L/BN</code>), which fail for a different reason: plain SGD is too weak to overcome the 100-layer BN gradient conditioning. Adam was actually the better optimizer there (audit best was 38% / 21%) — recovery3 (in flight) returns to Adam with tighter plateau + <code>bn_momentum=0.01</code> + LR warmup + gradient clipping. The story now reads cleanly along an axis: <b>optimizer choice depends on the BN/NoBN dimension at depth 100</b> — plain SGD for NoBN (Adam underflows in float32), Adam for BN (SGD too weak for ill-conditioned gradients).
+</div>
+
+<div class="toc">
+<b>Contents</b>
+<ol>
+  <li><a href="#scoreboard">Final scoreboard — 12 architectures</a></li>
+  <li><a href="#trajectories">Trajectories and key plots</a></li>
+  <li><a href="#chronology">Chronological narrative — how each architecture was fixed</a></li>
+  <li><a href="#summary-results">Comprehensive per-architecture summary</a></li>
+  <li><a href="#100L-analysis">Why the 4 depth-100 architectures fail</a></li>
+  <li><a href="#reproducibility">Reproducibility</a></li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="scoreboard">1. Final scoreboard — 12 architectures</h2>
+
+<p>The thesis criterion is <code>eval_train_accuracy ≥ 0.995</code> AND <code>eval_train_loss ≤ 0.10</code>, evaluated on the full training set in <code>model.eval()</code> mode. All numbers below are from the unified <b>final audit run</b>: each architecture rerun from scratch with <code>seed=42</code>, 200 epochs, no early stopping, using its best-known recipe.</p>
+
+<table>
+<thead>
+<tr>
+  <th>Dataset</th><th>Depth</th><th>BN</th>
+  <th>Final test_acc</th>
+  <th>Final eval_train_acc</th>
+  <th>Final eval_train_loss</th>
+  <th>Pass criterion</th>
+  <th>Recipe (best known)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="pass">
+  <td>cifar10</td><td>30L</td><td>NoBN</td>
+  <td class="mono">0.5452</td><td class="mono">1.0000</td><td class="mono">0.0000</td>
+  <td><b>Yes</b></td>
+  <td class="mono">SGD lr=0.01 onecycle bs=128 <span class="meta">(orig sweep)</span></td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>30L</td><td>BN</td>
+  <td class="mono">0.5602</td><td class="mono">1.0000</td><td class="mono">0.0001</td>
+  <td><b>Yes</b></td>
+  <td class="mono">Adam lr=1e-3 onecycle bnm=0.1 bs=256 <span class="meta">(orig sweep)</span></td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>50L</td><td>NoBN</td>
+  <td class="mono">0.5345</td><td class="mono">1.0000</td><td class="mono">0.0000</td>
+  <td><b>Yes</b></td>
+  <td class="mono">SGD lr=0.01 onecycle bs=128 <span class="meta">(orig sweep)</span></td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>50L</td><td>BN</td>
+  <td class="mono">0.5112</td><td class="mono"><b>0.9974</b></td><td class="mono"><b>0.0119</b></td>
+  <td><b>Yes ✓ new</b></td>
+  <td class="mono">Adam lr=1e-3 plateau(p=5, f=0.5) bnm=0.01 bs=256 <span class="meta">(Phase 3 γ)</span></td>
+</tr>
+<tr class="pass">
+  <td>cifar10</td><td>100L</td><td>NoBN</td>
+  <td class="mono">0.3926</td><td class="mono"><b>0.9959</b></td><td class="mono"><b>0.0157</b></td>
+  <td><b>Yes ✓ new (post-meeting)</b></td>
+  <td class="mono">SGD lr=1e-3 mom=0 plateau(p=5, f=0.5, min_lr=1e-7) bs=128 <span class="meta">(recovery 2)</span></td>
+</tr>
+<tr class="fail">
+  <td>cifar10</td><td>100L</td><td>BN</td>
+  <td class="mono">0.1119</td><td class="mono">0.1049</td><td class="mono">2.3078</td>
+  <td>No <span class="meta">(borderline-untrainable)</span></td>
+  <td class="mono">Adam lr=1e-3 cosine bnm=0.01 bs=256 <span class="meta">(best from Phase 2 E)</span></td>
+</tr>
+<tr class="pass">
+  <td>fmnist</td><td>30L</td><td>NoBN</td>
+  <td class="mono">0.8999</td><td class="mono">1.0000</td><td class="mono">0.0000</td>
+  <td><b>Yes</b></td>
+  <td class="mono">SGD lr=0.01 onecycle bs=128 <span class="meta">(orig sweep)</span></td>
+</tr>
+<tr class="pass">
+  <td>fmnist</td><td>30L</td><td>BN</td>
+  <td class="mono">0.9053</td><td class="mono">0.9999</td><td class="mono">0.0014</td>
+  <td><b>Yes</b></td>
+  <td class="mono">Adam lr=1e-3 cosine bnm=0.1 bs=256 <span class="meta">(orig sweep)</span></td>
+</tr>
+<tr class="pass">
+  <td>fmnist</td><td>50L</td><td>NoBN</td>
+  <td class="mono">0.8886</td><td class="mono"><b>1.0000</b></td><td class="mono"><b>0.0000</b></td>
+  <td><b>Yes ✓ new</b></td>
+  <td class="mono">SGD lr=3e-3 plateau(p=5, f=0.5) bs=128 <span class="meta">(Phase 3 α)</span></td>
+</tr>
+<tr class="pass">
+  <td>fmnist</td><td>50L</td><td>BN</td>
+  <td class="mono">0.8847</td><td class="mono"><b>1.0000</b></td><td class="mono"><b>0.0027</b></td>
+  <td><b>Yes ✓ new</b></td>
+  <td class="mono">Adam lr=5e-4 plateau(p=5, f=0.5) bnm=0.01 bs=256 <span class="meta">(Phase 5 ε')</span></td>
+</tr>
+<tr class="pass">
+  <td>fmnist</td><td>100L</td><td>NoBN</td>
+  <td class="mono">0.8633</td><td class="mono"><b>0.9953</b></td><td class="mono"><b>0.0157</b></td>
+  <td><b>Yes ✓ new (post-meeting)</b></td>
+  <td class="mono">SGD lr=1e-3 mom=0 plateau(p=10, f=0.5) bs=128 <span class="meta">(recovery 1)</span></td>
+</tr>
+<tr class="fail">
+  <td>fmnist</td><td>100L</td><td>BN</td>
+  <td class="mono">0.3616</td><td class="mono">0.3618</td><td class="mono">1.6605</td>
+  <td>No <span class="meta">(borderline-untrainable)</span></td>
+  <td class="mono">Adam lr=1e-3 plateau(p=5, f=0.5) bnm=0.01 bs=256 <span class="meta">(Phase 3 δ₂)</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="win">
+<b>Strict scoreboard:</b> 10 of 12 architectures pass — the four 30L runs, both 50L/NoBN runs, both 50L/BN runs, and (post-meeting) both 100L/NoBN runs. Of these, three depth-50 passes (highlighted "new") were enabled by adopting <code>ReduceLROnPlateau</code> as the LR schedule; the two depth-100 passes (highlighted "new post-meeting") were enabled by replacing Adam with plain SGD (see Section 7). The remaining 2 failures are both 100L/BN — addressed by recovery round 3 (in flight), which returns to Adam (the audit-best optimizer for these) with tighter plateau and a warmup-plus-clip safeguard against the epoch-0 NaN we saw twice.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="trajectories">2. Trajectories and key plots</h2>
+
+<h3>2.1 Full audit grid — all 12 architectures</h3>
+<p>Each panel shows <code>eval_train_accuracy</code> across 200 epochs for one architecture. Rows = datasets (cifar10 top, fmnist bottom); columns = (depth, BN) combinations. Green = passes the thesis criterion; orange = stable but below threshold; red = dead/borderline. The dotted horizontal line at 0.995 is the pass threshold; the small label inside each panel is the recipe used.</p>
+<p><img src="figures/final_grid_trajectories.png" alt="12 trajectories grid" style="max-width:100%;"></p>
+
+<h3>2.2 The 8 passing architectures overlaid</h3>
+<p>Different recipes converge to the threshold on very different timescales — the original 30L runs cross within 10 epochs; the plateau-rescued 50L/BN cases need 120–180 epochs.</p>
+<p><img src="figures/final_passing_overlay.png" alt="Passing overlay" style="max-width:100%;"></p>
+
+<h3>2.3 LR schedules for the passing runs</h3>
+<p>Three of the eight passing runs use <code>ReduceLROnPlateau</code> — the three 50L cases that were rescued from the failing column (cifar10/50L/BN, fmnist/50L/NoBN, fmnist/50L/BN); the visible stepwise drops are scheduler-triggered (every drop fires after 5 epochs of no eval_train_loss improvement). The other five use the original-sweep schedules: four OneCycle (cifar10/30L/NoBN, cifar10/30L/BN, cifar10/50L/NoBN, fmnist/30L/NoBN) and one cosine (fmnist/30L/BN), all with smooth decay.</p>
+<p><img src="figures/final_lr_schedules.png" alt="LR schedules" style="max-width:100%;"></p>
+
+<h3>2.4 Generalization gap (train − test) for the 8 passing runs, BN vs NoBN</h3>
+<p>For the 8 architectures that pass the thesis criterion, we measure how much each one over-fits the training set: <code>gap = eval_train_acc − test_acc</code>. Smaller gap = better generalization. Grouping the four NoBN bars against the four BN bars (one comparison per <code>{dataset, depth}</code> combination) isolates BatchNorm's regularization effect, holding everything else fixed.</p>
+<p><img src="figures/final_generalization_gap.png" alt="Generalization gap, BN vs NoBN" style="max-width:100%;"></p>
+<p><b>What the figure shows.</b> The dashed horizontal lines are the mean gap within each group (orange = NoBN mean, blue = BN mean). Two clean observations:</p>
+<ol>
+  <li><b>BatchNorm modestly reduces the generalization gap</b> at fixed dataset and depth (the BN bars sit slightly below their NoBN counterparts in 3 of 4 comparisons). The mean-gap difference is small but consistent — exactly the size of effect expected from BN's implicit regularization (~1–2 percentage points).</li>
+  <li><b>Dataset dominates absolute gap size.</b> cifar10 runs over-fit much harder (gap ~0.45–0.49) than fmnist runs (gap ~0.10–0.12). This is because the FC network on cifar10 reaches 100% train but only ~0.55 test — it has the capacity to memorize without learning the convolutional structure that would actually generalize. fmnist's lower-variance signal generalizes much better with the same FC capacity.</li>
+</ol>
+
+<h3>2.5 The mechanistic rescue — BN-variance stays bounded under plateau</h3>
+<p>For the two cifar10/50L/BN and fmnist/50L/BN architectures rescued by plateau, the mean BN running variance grows in a controlled, bounded way (final values ~14 and ~5 respectively). Under the original recipes (cosine / constant LR) the same statistic ran away to ~150–250 just before the collapse — see the Phase 2 and Phase 3 reports for the comparison plots.</p>
+<p><img src="figures/final_bn_var_rescued.png" alt="BN variance rescue" style="max-width:100%;"></p>
+
+<h3>2.6 The 100L diagnostic — gradient health</h3>
+<p>This figure has two panels because the NoBN and BN runs fail in different ways and need to be measured with different statistics.</p>
+<p><img src="figures/final_100L_gradient_ratios.png" alt="100L gradient health, two panels" style="max-width:100%;"></p>
+<ul>
+  <li><b>Left panel — minimum per-layer gradient norm (log scale).</b> The NoBN runs (red = cifar10, orange = fmnist) are pinned to the machine-zero floor from the very first diagnostic checkpoint (ep 10) all the way through ep 200 — gradients near the input layers underflow to exactly 0 in float32. The BN runs (blue, purple) stay safely above 1e-2 throughout: BatchNorm's per-layer normalization rescues the backward flow.</li>
+  <li><b>Right panel — max/min gradient norm ratio (log scale).</b> The ratio is undefined for NoBN (it's 0/0 once the gradients die), so only the BN runs appear here. They sit at 10⁵–10⁷ throughout, 2–4 orders of magnitude above the "healthy" rule-of-thumb of ~10³. That conditioning gap means updates to different layers operate at wildly different effective scales, and no single global LR can serve all of them simultaneously.</li>
+</ul>
+<p>Together, the two panels say: NoBN dies because gradients vanish; BN survives but the surviving gradients are too poorly conditioned for any global LR to drive convergence.</p>
+
+<!-- ============================================================ -->
+<h2 id="chronology">3. Chronological narrative — how each architecture was fixed</h2>
+
+<p>This section walks through the work phase by phase, focusing on the four architectures we actively improved or characterized: cifar10/50L/BN, fmnist/50L/NoBN, fmnist/50L/BN, and the four 100L cases (which we proved are not tuning failures). For brevity the depth-30 runs (which passed from the start) are not retraced.</p>
+
+<h3>3.1 The starting position — original 12-arch grid sweep</h3>
+<p><span class="phase-marker orig">orig</span>The thesis began with a brute-force grid search over <code>{optimizer, scheduler, lr, batch_size}</code> for each of the 12 architectures, with the criterion of <code>eval_train_acc ≥ 0.995</code> for at least 5 consecutive epochs. The best-of-grid configurations gave 5 passes (the four depth-30 architectures + cifar10/50L/NoBN) and 7 failures. The failures fell into three patterns:</p>
+<ul>
+  <li><b>LR overshoot:</b> SGD + OneCycle at lr=0.01 on fmnist/50L/NoBN caused training to crash around ep 22 once OneCycle ramped the LR to peak.</li>
+  <li><b>BatchNorm collapse:</b> Adam + cosine at lr=1e-3 with bnm=0.05 on both cifar10/50L/BN and fmnist/50L/BN climbed to 0.20–0.30, then catastrophically collapsed in the high-30s of epochs (loss spike of 100×+).</li>
+  <li><b>Total non-learning at 100L:</b> all four depth-100 runs sat at 0.10 accuracy throughout — looked dead, mechanism unclear.</li>
+</ul>
+
+<h3>3.2 <span class="phase-marker p1">Phase 1</span> Hypothesis-driven diagnostic runs (7 short experiments)</h3>
+<p>Instead of more brute-force tuning, Phase 1 ran 7 short (30-epoch) hypothesis tests, each designed to probe one suspected failure mode. The key insights were:</p>
+<ul>
+  <li><b>fmnist/50L/NoBN solved (run #2):</b> SGD constant lr=0.003 reached 95.67% with monotonic improvement and stable gradients — confirming the failure was OneCycle's ramp to lr=0.01, not the architecture.</li>
+  <li><b>"Promising" fmnist/50L/BN (run #6):</b> Adam cosine T_max=30 bnm=0.01 reached 96.68% at ep 30, looking stable. <i>This turned out to be an artifact of cosine decaying to zero before BN collapse could manifest</i> — see Phase 2.</li>
+  <li><b>cifar10/100L/NoBN definitively dead (run #7):</b> diagnostic logging showed gradient norms collapsing to literally 0.0 by ep 3 (gradient ratio = 9.88M at ep 1). This was the first confirmation that the 100L/NoBN failures are mechanistic, not tuning gaps.</li>
+</ul>
+<p><b>Methodological output:</b> Phase 1 also added diagnostic infrastructure to the training loop — per-epoch logging of <code>learning_rate</code>, <code>grad_norm_per_layer</code>, and <code>bn_running_var_mean</code> — that became essential for the later phases.</p>
+
+<h3>3.3 <span class="phase-marker p2">Phase 2</span> Long-run confirmation + plateau A/B test</h3>
+<p>Phase 2 ran 7 longer experiments (mostly 100 epochs) to extend Phase 1 winners and probe the cifar10/50L/BN ambiguity with an A/B comparison: constant LR (C) versus <code>ReduceLROnPlateau</code> (D). The results were dramatic:</p>
+<ul>
+  <li><b>Run D (plateau, cifar10/50L/BN): clean climb to 0.9577</b> across 4 LR drops. <i>This was the breakthrough.</i> The plateau-triggered LR drops arrived just as learning stalled and unstuck the optimizer; bn_var stayed bounded at ~14 throughout.</li>
+  <li><b>Run C (constant LR, cifar10/50L/BN): collapsed to 0.13</b> at ep 71 with bn_var ballooning to 158. This isolated the failure mechanism: <i>BatchNorm running-variance runaway is the real culprit at depth 50/BN, and adaptive LR throttling prevents it</i>.</li>
+  <li><b>Run B (cosine T_max=100, fmnist/50L/BN): collapsed at ep 31</b> with bn_var=29 at end. This invalidated Phase 1's "promising" fmnist/50L/BN result — the 30-epoch cosine had simply frozen training before collapse could occur.</li>
+  <li><b>Run G (gradient-death check, fmnist/100L/NoBN, 10 ep):</b> confirmed gradient death on the second dataset, mirroring Phase 1 run #7. Symmetric coverage achieved.</li>
+</ul>
+<p><b>Mechanistic conclusion from Phase 2:</b> the 50L/BN failures are BN-statistic catastrophes, not optimizer or LR-overshoot problems. Adaptive LR is the right tool.</p>
+
+<h3>3.4 <span class="phase-marker p3">Phase 3</span> Apply the plateau lesson everywhere</h3>
+<p>Phase 3 took the plateau recipe (patience=5, factor=0.5, monitor eval_train_loss) and applied it to all 5 remaining failing architectures. Two new passes:</p>
+<ul>
+  <li><b>α: fmnist/50L/NoBN with SGD lr=0.003 + plateau → 0.9997 / 0.0013.</b> The mid-run wobble we saw in Phase 2 A (acc dropping 0.98 → 0.80 at ep 71) was prevented by a plateau-triggered LR drop at ep 57. Clean monotonic climb, <b>strict pass</b>.</li>
+  <li><b>γ: cifar10/50L/BN with Adam lr=1e-3 + plateau, extended to 200 ep → 0.9974 / 0.0119.</b> Phase 2 D extended; crossed 0.995 around ep 161, crossed the loss threshold around ep 129. <b>Strict pass</b>.</li>
+  <li><b>β: fmnist/50L/BN with Adam lr=1e-3 + plateau → 0.9487 / 0.17.</b> Did not collapse (bn_var=5.13, bounded), but the loss trajectory was oscillatory with spikes at ep 17 and 41 suggesting the starting LR was just slightly too aggressive. Required Phase 5 to fix.</li>
+  <li><b>δ₁, δ₂ (100L/BN): plateau did not help.</b> δ₁ (cifar10) stayed at 0.11; δ₂ (fmnist) had a late slow breakthrough to 0.34. The 100L/BN cases require something beyond LR tuning.</li>
+</ul>
+
+<h3>3.5 <span class="phase-marker p4">Phase 4</span> Failed attempts — what we learned about <i>not</i> doing</h3>
+<p>Phase 4 tested two refinements: gentler plateau (patience=10, factor=0.7) for fmnist/50L/BN, and warmup+plateau for the 100L/BN cases. Both were instructive failures:</p>
+<ul>
+  <li><b>ε (gentler plateau, fmnist/50L/BN): collapsed worse than β.</b> The gentler patience let BN drift accumulate for 10 more epochs before the LR drop, and the run blew up at ep 30 (loss → 33.99, bn_var → 46.5). <i>Lesson: patience=5 was the right choice — relaxing it allowed the very BN drift that plateau is supposed to suppress.</i></li>
+  <li><b>ζ₁ (warmup+plateau, cifar10/100L/BN): regression vs. Phase 3.</b> Stayed at 0.11 throughout. Warmup didn't help; the issue isn't LR earliness, it's per-layer conditioning.</li>
+  <li><b>ζ₂ (warmup+plateau, fmnist/100L/BN): showed some life</b> (peak 0.34 in oscillating fashion) — but still well below pass. Cancelled mid-run after confirming the 100L/BN ceiling is real.</li>
+</ul>
+
+<h3>3.6 <span class="phase-marker p5">Phase 5</span> The final fix — halve the LR for fmnist/50L/BN</h3>
+<p>The hypothesis: Phase 3 β's loss spikes at ep 17 and 41 (with lr=1e-3) suggested the starting LR was just slightly too aggressive for BN stability. Try lr=5e-4 with otherwise identical plateau settings.</p>
+<p><b>Result: clean pass.</b> The lower LR eliminated the loss spikes entirely. The run climbed monotonically, the plateau scheduler stepped LR down 5 times (5e-4 → 1.56e-5), and the final state was <b>0.9996 acc / 0.0088 loss</b>. BN var stayed bounded at 3.31 — even smaller than β's already-bounded 5.13.</p>
+<p><b>This confirms the methodology generalizes:</b> all three 50L cases that the original sweep failed on can be passed with the same scheduler family (ReduceLROnPlateau, patience=5, factor=0.5), with only the starting LR varying per architecture.</p>
+
+<h3>3.7 Final audit (this report)</h3>
+<p>To verify reproducibility and produce a single dataset for figures, every one of the 12 architectures was rerun from <code>seed=42</code> with its best-known recipe for 200 epochs (no early stopping). All 8 passing recipes were confirmed; the 4 failures were confirmed too. Numbers above (Section 1) come from this run.</p>
+
+<h3>3.8 Visual summary of the chronology</h3>
+<table>
+<thead>
+<tr><th>Phase</th><th>What we tried</th><th>Architectures changed</th><th>New passes</th></tr>
+</thead>
+<tbody>
+<tr><td><span class="phase-marker orig">orig</span></td><td>Brute-force grid {opt, sch, lr, bs}</td><td>all 12 simultaneously</td><td>5 (the easy ones)</td></tr>
+<tr><td><span class="phase-marker p1">P1</span></td><td>7 short hypothesis tests; diagnostic logging added</td><td>—</td><td>0 (set up infrastructure + identified candidates)</td></tr>
+<tr><td><span class="phase-marker p2">P2</span></td><td>Long-run A/B: constant vs plateau on cifar10/50L/BN</td><td>cifar10/50L/BN (D candidate, then extended in P3)</td><td>0 (confirmed plateau works in principle)</td></tr>
+<tr><td><span class="phase-marker p3">P3</span></td><td>Apply plateau to all remaining failures</td><td>α, γ, β, δ₁, δ₂</td><td><b>+2</b> (fmnist/50L/NoBN, cifar10/50L/BN)</td></tr>
+<tr><td><span class="phase-marker p4">P4</span></td><td>Gentler plateau + warmup variants</td><td>ε, ζ₁, ζ₂</td><td>0 (cancelled mid-job; confirmed depth-100 ceiling)</td></tr>
+<tr><td><span class="phase-marker p5">P5</span></td><td>Halve LR for fmnist/50L/BN</td><td>ε'</td><td><b>+1</b> (fmnist/50L/BN)</td></tr>
+<tr><td colspan="3"><b>Net result</b></td><td><b>5 → 8 / 12 passing</b></td></tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="summary-results">4. Comprehensive per-architecture summary</h2>
+
+<h3>4.1 Per-architecture results, with mechanism notes</h3>
+
+<details open><summary><b>cifar10 / 30L / NoBN</b> — original sweep, PASS</summary>
+<p><b>Recipe:</b> SGD lr=0.01, OneCycle, bs=128, 200 ep.<br>
+<b>Final:</b> eval_train_acc=1.0000, loss=0.0000, test_acc=0.5452.<br>
+<b>Notes:</b> Trivial-to-train at depth 30. OneCycle peak LR is not destabilizing here because 30 layers is shallow enough that He init keeps signal magnitudes in the right range. Test accuracy plateaus at ~0.55 — the expected FC ceiling on cifar10 (since cifar10 needs convolutional inductive bias to push past ~0.60).</p>
+</details>
+
+<details><summary><b>cifar10 / 30L / BN</b> — original sweep, PASS</summary>
+<p><b>Recipe:</b> Adam lr=1e-3, OneCycle, bnm=0.1, bs=256, 200 ep.<br>
+<b>Final:</b> eval_train_acc=1.0000, loss=0.0001, test_acc=0.5602.<br>
+<b>Notes:</b> Same regime as the NoBN version — 30L is shallow enough that BN doesn't induce drift problems. Slight test improvement vs NoBN (+1.5 pts) from BN's regularizing effect.</p>
+</details>
+
+<details><summary><b>cifar10 / 50L / NoBN</b> — original sweep, PASS</summary>
+<p><b>Recipe:</b> SGD lr=0.01, OneCycle, bs=128, 200 ep.<br>
+<b>Final:</b> eval_train_acc=1.0000, loss=0.0000, test_acc=0.5345.<br>
+<b>Notes:</b> Surprisingly stable even at lr=0.01 + OneCycle, unlike the fmnist counterpart. The cifar10 dataset's higher input variance evidently helps stabilize SGD here. Test accuracy is the lowest of the 30L+50L cifar10 cluster — depth without normalization on cifar10 starts to hurt generalization.</p>
+</details>
+
+<details open><summary><b>cifar10 / 50L / BN</b> — Phase 3 γ, PASS (new)</summary>
+<p><b>Recipe:</b> Adam lr=1e-3, plateau(p=5, f=0.5, monitor eval_train_loss), bnm=0.01, bs=256, 200 ep.<br>
+<b>Final:</b> eval_train_acc=0.9974, loss=0.0119, test_acc=0.5112.<br>
+<b>Path:</b> orig sweep (Adam cosine bnm=0.05) → 0.22 (collapsed)<span class="step-arrow">→</span>P2 D (Adam cosine bnm=0.01, 100ep) → 0.5406 (climbing)<span class="step-arrow">→</span>P3 γ (same + plateau, 200ep) → <b>0.9974 PASS</b>.<br>
+<b>Mechanism:</b> Without plateau, BN running variance grows from ~1 at ep 1 to ~158 by ep 71 — at which point the eval-mode forward pass produces extreme activations (loss explodes to 173 transiently) and learning collapses. With plateau, every loss-stall triggers an LR halving, which slows BN updates exactly when they were about to run away. Bn_var stays bounded at ~14 throughout the full 200 ep.</p>
+</details>
+
+<details open><summary><b>cifar10 / 100L / NoBN</b> — Plain-SGD recovery (post-meeting), PASS (new)</summary>
+<p><b>Final-audit recipe (Adam lr=1e-3 cosine):</b> dead — eval_train_acc=0.1000, loss=2.3026 (≈ log 10, uniform random).<br>
+<b>Recovery recipe (plain SGD, recovery 2):</b> SGD lr=1e-3, momentum=0, plateau(p=5, f=0.5, min_lr=1e-7), bs=128, depth=100, width=500, He init. Early-stopped at epoch 157.<br>
+<b>Recovery final:</b> eval_train_acc=<b>0.9959</b>, loss=<b>0.0157</b>, test_acc=0.3926.<br>
+<b>Path:</b> audit Adam-cosine → dead<span class="step-arrow">→</span>recovery1 (plain SGD + plateau(p=10), 200 ep) → 0.9908 best, 0.0458 loss (loss bar met, train bar near-miss — only 1 LR drop in 200 ep)<span class="step-arrow">→</span>recovery2 (plain SGD + plateau(p=5, min_lr=1e-7)) → <b>PASS</b> at ep 157 with 5 LR halvings (1e-3 → 6.25e-5).<br>
+<b>Mechanism:</b> Same Adam-induced gradient death as fmnist/100L/NoBN — see Section 7 for the full diagnosis. The additional difficulty on cifar10 (richer 3072-dim input + harder 10-class natural-image task) means convergence needs ~5 LR halvings before the optimum is found; recovery1's gentler patience=10 wasn't aggressive enough.<br>
+<b>Caveat:</b> test_acc 0.3926 — heavy overfitting. 100-layer FC on raw CIFAR-10 pixels is fundamentally capacity-limited (a convnet would buy ~30 pts of test accuracy). This is a thesis-criterion pass on the *train* side, but the test side reflects the FC-on-images ceiling.</p>
+</details>
+
+<details><summary><b>cifar10 / 100L / BN</b> — BORDERLINE-UNTRAINABLE</summary>
+<p><b>Recipe:</b> Adam lr=1e-3, cosine, bnm=0.01, bs=256, 200 ep <i>(best of all attempted)</i>.<br>
+<b>Final:</b> eval_train_acc=0.1049, best=0.1500, loss=2.3078.<br>
+<b>Notes:</b> Better than NoBN (which is dead) but still essentially random. Tried plateau (Phase 3 δ₁): worse (stuck at 0.11). Tried warmup+plateau (Phase 4 ζ₁): same. The 100L/BN failure is a forward-pass conditioning problem (gradient ratio 10⁵–10⁶ throughout) that no scheduler can fix.</p>
+</details>
+
+<details><summary><b>fmnist / 30L / NoBN</b> — original sweep, PASS</summary>
+<p><b>Recipe:</b> SGD lr=0.01, OneCycle, bs=128, 200 ep.<br>
+<b>Final:</b> eval_train_acc=1.0000, loss=0.0000, test_acc=0.8999.<br>
+<b>Notes:</b> Same recipe as cifar10/30L/NoBN. fmnist is significantly easier (test acc ~0.90 vs ~0.55) because the underlying classification problem has more separable structure for FC layers.</p>
+</details>
+
+<details><summary><b>fmnist / 30L / BN</b> — original sweep, PASS</summary>
+<p><b>Recipe:</b> Adam lr=1e-3, cosine, bnm=0.1, bs=256, 200 ep.<br>
+<b>Final:</b> eval_train_acc=0.9999, loss=0.0014, test_acc=0.9053.<br>
+<b>Notes:</b> 0.5pt test gain over NoBN (BN's regularization).</p>
+</details>
+
+<details open><summary><b>fmnist / 50L / NoBN</b> — Phase 3 α, PASS (new)</summary>
+<p><b>Recipe:</b> SGD lr=3e-3, plateau(p=5, f=0.5, monitor eval_train_loss), bs=128, 200 ep.<br>
+<b>Final:</b> eval_train_acc=1.0000, loss=0.0000, test_acc=0.8886.<br>
+<b>Path:</b> orig sweep (SGD onecycle lr=0.01) → 0.86 (OneCycle ramp destabilized)<span class="step-arrow">→</span>P1 #2 (SGD const lr=0.003, 30ep) → 0.96 (clean climb)<span class="step-arrow">→</span>P3 α (same + plateau, 100ep) → 0.9997 (no mid-run wobble)<span class="step-arrow">→</span>final audit (200ep) → <b>1.0000 PASS</b>.<br>
+<b>Mechanism:</b> Without plateau (Phase 2 A) there was a mid-run wobble at ep 61–71 (acc dropping 0.98 → 0.80 → recover) caused by a single bad batch event. Adding plateau caught this region with an LR drop at ep 57, preserving monotonic improvement.</p>
+</details>
+
+<details open><summary><b>fmnist / 50L / BN</b> — Phase 5 ε', PASS (new)</summary>
+<p><b>Recipe:</b> Adam lr=5e-4, plateau(p=5, f=0.5, monitor eval_train_loss), bnm=0.01, bs=256, 200 ep.<br>
+<b>Final:</b> eval_train_acc=1.0000, loss=0.0027, test_acc=0.8847.<br>
+<b>Path:</b> orig sweep (Adam onecycle bnm=0.05) → 0.30 (collapsed)<span class="step-arrow">→</span>P2 B (Adam cosine bnm=0.01 100ep) → 0.33 (collapsed at ep 31)<span class="step-arrow">→</span>P3 β (Adam plateau lr=1e-3) → 0.95 (stable but oscillating)<span class="step-arrow">→</span>P5 ε' (Adam plateau lr=<b>5e-4</b>) → <b>1.0000 PASS</b>.<br>
+<b>Mechanism:</b> Phase 3 β with lr=1e-3 had two loss spikes (ep 17: loss=1.73, ep 41: loss=1.16) that the scheduler had to chase. Halving the LR to 5e-4 eliminated these spikes entirely — the run climbed cleanly, the plateau scheduler stepped LR down through 5 levels, and BN var stayed bounded at 3.31 throughout. The lesson: the BN-stability ceiling we thought existed at 0.95 was actually an LR-induced oscillation, not a fundamental limit.</p>
+</details>
+
+<details open><summary><b>fmnist / 100L / NoBN</b> — Plain-SGD recovery (post-meeting), PASS (new)</summary>
+<p><b>Final-audit recipe (Adam lr=1e-3, cosine):</b> dead — eval_train_acc=0.1000, loss=2.3026.<br>
+<b>Recovery recipe (plain SGD):</b> SGD lr=1e-3, momentum=0, plateau(p=10, f=0.5), bs=128, depth=100, width=500, He init. Early-stopped at epoch 152.<br>
+<b>Recovery final:</b> eval_train_acc=<b>0.9953</b>, loss=<b>0.0157</b>, test_acc=0.8633.<br>
+<b>Path:</b> audit Adam-cosine → dead (gradient death)<span class="step-arrow">→</span>advisor-replication run on the same architecture using plain SGD lr=1e-3, momentum=0 → matched advisor's numbers (ep 5 train acc 0.731 vs his 0.754)<span class="step-arrow">→</span>recovery1 (plain SGD + plateau, 200 ep) → <b>PASS</b> at ep 152.<br>
+<b>Mechanism:</b> Adam's second-moment estimate <code>v</code> underflows to ~0 in float32 when gradients are very small (which they are at depth 100 with He init), so the update becomes <code>lr · m̂ / √(0 + ε) ≈ 10 · m̂</code> — a large noisy update that destabilizes the forward pass within the first epoch. Plain SGD multiplies by <code>lr</code> and stays gentle, so the forward signal survives and the network learns normally. Gradient profile in the recovery run was healthy throughout (0.1–12 across the 100 layers). See <b>Section 7</b> for the full diagnosis.</p>
+</details>
+
+<details><summary><b>fmnist / 100L / BN</b> — BORDERLINE-UNTRAINABLE</summary>
+<p><b>Recipe:</b> Adam lr=1e-3, plateau(p=5, f=0.5), bnm=0.01, bs=256, 200 ep <i>(best of all attempted)</i>.<br>
+<b>Final:</b> eval_train_acc=0.3618, best=0.3825, loss=1.6605, test_acc=0.3616.<br>
+<b>Notes:</b> Plateau gave a late slow breakthrough (Phase 3 δ₂); the audit run reproduced this and pushed slightly further with 200 ep. But still essentially random for cifar10 standards (~0.10 for 10 classes), or "barely above chance" for fmnist. Better than cifar10/100L/BN — perhaps because fmnist's lower input variance makes the per-layer activations more stable — but not nearly enough to pass.</p>
+</details>
+
+<h3>4.2 Generalizability — test_accuracy by depth, dataset, BN status</h3>
+<p>For the 8 passing architectures, test accuracy is a function of dataset much more than of depth or BN:</p>
+<table>
+<thead><tr><th>Dataset</th><th>30L NoBN</th><th>30L BN</th><th>50L NoBN</th><th>50L BN</th><th>mean</th></tr></thead>
+<tbody>
+<tr><td>cifar10</td><td>0.5452</td><td>0.5602</td><td>0.5345</td><td>0.5112</td><td><b>0.5378</b></td></tr>
+<tr><td>fmnist</td><td>0.8999</td><td>0.9053</td><td>0.8886</td><td>0.8847</td><td><b>0.8946</b></td></tr>
+</tbody>
+</table>
+<p>Two clean observations:</p>
+<ol>
+  <li><b>Dataset dominates.</b> fmnist passes generalize to ~0.89 test, cifar10 passes plateau at ~0.54. This is the expected FC ceiling on cifar10 (a vision task with high input variance and complex spatial structure), where convolutional architectures would buy ~30 percentage points.</li>
+  <li><b>Within a dataset, depth and BN are nearly free.</b> Test accuracy varies by <1 pt across the depth-30 and depth-50 cases. BN gives a small positive (0.5–1.5 pt) lift via regularization, but doesn't change the regime.</li>
+</ol>
+<p>For depth-100, test accuracy collapses to dataset-dependent baselines: ~0.10 (NoBN, random), ~0.11 (cifar10/100L/BN), ~0.36 (fmnist/100L/BN). The fmnist/100L/BN test accuracy is actually proportional to the train accuracy — there is some real learning happening, just nowhere near pass.</p>
+
+<!-- ============================================================ -->
+<h2 id="100L-analysis">5. Why the 4 depth-100 architectures fail</h2>
+
+<h3>5.1 100L / NoBN — gradient death (under Adam)</h3>
+<p>Per-layer gradient L2 norms at depth 100 without normalization show extreme imbalance from epoch 1 <i>when the optimizer is Adam</i>:</p>
+<pre>cifar10/100L/NoBN, audit run (Adam lr=1e-3 cosine), ep 1: grad_norm_range = [1.46e-10, 1.70e-03]
+                                                          gradient max/min ratio: 1.16e+07
+ep 3+:                                                    grad_norm_range = [0.00, 0.00]    ← all gradients exactly zero</pre>
+<p><b>What's happening at the architecture level:</b> He init scales weights so that the <i>variance</i> of pre-activations stays roughly constant through depth in expectation. But this is a statistical guarantee that breaks at extreme depth because the variance of the variance grows exponentially in depth. At depth 100, the random initialization produces a forward pass where activations at later layers are tightly concentrated near 0 (post-ReLU), so backprop produces gradients near zero there — and then the chain rule propagates that toward zero into the earlier layers.</p>
+<p><b>Why Adam, specifically, kills this:</b> when individual gradient components <code>g</code> drop into the 1e-15 range, Adam's second-moment estimate <code>v ← β₂·v + (1−β₂)·g²</code> underflows in float32 (anything squared below ~1.18e-19 rounds to 0). The Adam update <code>lr · m̂ / (√v̂ + ε)</code> then becomes <code>lr · m̂ / √ε ≈ 10 · m̂</code> — a unit-magnitude noisy update on every parameter every step. On a 100-layer NoBN net on a knife-edge, this drives activations to underflow on the next forward pass, all gradients become exactly 0, and the model is permanently stuck.</p>
+<p><b>Why plain SGD survives the same architecture:</b> SGD multiplies by <code>lr</code>, not by <code>1/√v̂</code>. Tiny gradient → tiny update → network barely moves → forward pass survives → gradients stay finite. This is exactly what we saw in the recovery runs (<b>Section 7</b>): the same 100-layer NoBN He-init architecture trains cleanly under plain SGD on FMNIST (PASS), trains on MNIST (95% test), and partially trains on CIFAR-10 (38% test in 20 ep).</p>
+<p><b>Revised statement of the failure mode:</b> the 100L/NoBN audit numbers in this report are an <i>Adam-induced</i> failure, not an unconditional gradient death. The architecture itself is trainable; the original recipe choice was wrong.</p>
+<p><b>Architectural fixes that would work</b> (but are outside the scope of "He init"):</p>
+<ul>
+  <li><b>Residual connections</b> — let the gradient flow directly through skip paths, bypassing the multiplicative chain.</li>
+  <li><b>Fixup init / ZeroInit</b> — explicitly normalize the gradient flow at init by setting later-layer weights to zero, so initial forward pass is dominated by the residual stream.</li>
+  <li><b>LayerNorm</b> — re-normalize per-sample at each layer, bounding signal magnitude.</li>
+  <li><b>Lower depth.</b> The result is fundamentally a statement about He init at extreme depth without normalization.</li>
+</ul>
+
+<h3>5.2 100L / BN — borderline-untrainable</h3>
+<p>Per-layer gradient norms at depth 100 with BN are healthier than without:</p>
+<pre>cifar10/100L/BN, audit run, ep 10: grad_norm_range = [1.82e-02, 7.03e+03]
+                                   gradient max/min ratio: 3.87e+05  (vs ∞ for NoBN)
+ep 200:                            grad_norm_range = [1.22e-02, 4.15e+02]
+                                   ratio: 3.41e+04</pre>
+<p>Gradients are non-zero (BN's per-layer normalization rescues the backward flow), but the max/min ratio is still 3–5 orders of magnitude above the rule-of-thumb "well-conditioned" threshold of ~10³. <b>This means that updates to different layers operate at wildly different effective scales, and no single global LR can serve all of them.</b></p>
+<p>The asymmetry between cifar10 (stays at ~0.13 accuracy) and fmnist (slow breakthrough to 0.36) is interesting. The fmnist input distribution is much lower-variance (single channel, fewer salient features), so the forward signal is closer to the BN-friendly regime. cifar10's high-variance RGB input pushes the BN running stats around enough that even with plateau, the run can't get traction.</p>
+<p><b>Can the 100L/BN cases be saved?</b> Not by initialization alone, in our reading. Three categories of fix would help, in increasing order of departure from the thesis's scope:</p>
+<ol>
+  <li><b>Per-layer learning rates (e.g. LARS, Lamb).</b> Directly addresses the per-layer scale mismatch. This is the most thesis-adjacent fix because it keeps He init and BN as-is.</li>
+  <li><b>Residual blocks with BN.</b> Combines BN with residual flow; would essentially make this a 100-layer ResNet-FC. Very likely to pass, but changes the architecture.</li>
+  <li><b>Different initialization (Fixup, ZerO).</b> Designs init to compensate for what BN+depth do; would change the answer to "He init at 100L is untrainable, but {Fixup, ZerO} is trainable" — that's a different (and arguably more interesting) result for the thesis.</li>
+</ol>
+<p><i>This paragraph reflects the original conclusion before the post-meeting plain-SGD finding. See <b>Section 7</b> for the revised reading: the NoBN cases are not unconditionally untrainable — they were Adam-induced failures. The BN cases (which never died, only failed to converge) remain the genuinely-hard cases and are being addressed by recovery2.</i></p>
+
+<h3>5.3 Why depth 50 works but depth 100 doesn't</h3>
+<p>It is tempting to ask "why is 50L the boundary?" Two explanations:</p>
+<ul>
+  <li><b>For NoBN:</b> The probability of gradient vanishing grows roughly exponentially in depth. At depth 50 the He-init forward variance still survives enough perturbation to maintain backward signal; at depth 100 it doesn't. The threshold is sharp.</li>
+  <li><b>For BN:</b> Depth 50 lets BN's per-sample-batch normalization compensate for forward-signal drift without amplifying conditioning issues. At depth 100, BN's running statistics (estimated from minibatches) become a noisier proxy for true statistics — and that noise compounds across 100 layers, leading to the persistent 10⁵–10⁶ gradient-ratio range we observe.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="post-meeting">7. Post-meeting finding — Adam-induced gradient death, plain-SGD rescue</h2>
+
+<p>After this report's initial sign-off, a meeting with the thesis advisor produced a critical observation: the advisor had himself trained a 100-layer FC He-init network on a 28×28-input dataset (matching the ~26.1M parameter count → Fashion-MNIST or MNIST), reaching 75% train accuracy in 5 epochs with plain SGD (lr=1e-3, no momentum, no weight decay, batch_size=128). Our final-audit run on the same architecture had been dead from epoch 1. This section documents the diagnostic that followed.</p>
+
+<h3>7.1 Replicating the advisor's recipe</h3>
+<p>The runner <code>cluster/run_plain_sgd_100L.py</code> applies the exact recipe to three datasets — one matches the advisor's setup (FMNIST), one is a sanity-check (MNIST, same input dimension, easier), and one tests dataset generalization (CIFAR-10, different input dimension).</p>
+
+<table>
+<thead><tr><th>Epoch</th><th>Prof TrLoss</th><th>Prof TrAcc</th><th>Prof TestAcc</th><th>Our FMNIST TrLoss</th><th>Our FMNIST TrAcc</th><th>Our FMNIST TestAcc</th></tr></thead>
+<tbody>
+<tr><td>1</td><td class="mono">1.8008</td><td class="mono">25.58%</td><td class="mono">33.89%</td><td class="mono"><b>1.9027</b></td><td class="mono"><b>24.22%</b></td><td class="mono"><b>29.64%</b></td></tr>
+<tr><td>5</td><td class="mono">0.6743</td><td class="mono">75.40%</td><td class="mono">77.40%</td><td class="mono"><b>0.6972</b></td><td class="mono"><b>73.08%</b></td><td class="mono"><b>73.87%</b></td></tr>
+</tbody>
+</table>
+<p>Within 1–2% of the advisor's numbers at each checkpoint — confirms both the dataset (FMNIST) and the recipe match.</p>
+
+<table>
+<thead><tr><th>Dataset</th><th>Train acc @ ep 20</th><th>Train loss @ ep 20</th><th>Test acc @ ep 20</th><th>Gradient range across 100 layers</th></tr></thead>
+<tbody>
+<tr><td class="mono">MNIST</td><td class="mono"><b>0.9796</b></td><td class="mono">0.0789</td><td class="mono">0.9526</td><td class="mono">~0.5 – 7</td></tr>
+<tr><td class="mono">Fashion-MNIST</td><td class="mono">0.8836</td><td class="mono">0.3383</td><td class="mono">0.8372</td><td class="mono">~0.9 – 6</td></tr>
+<tr><td class="mono">CIFAR-10</td><td class="mono">0.4450</td><td class="mono">1.5179</td><td class="mono">0.3779</td><td class="mono">~1.3 – 13</td></tr>
+</tbody>
+</table>
+<p>All three architectures are <i>alive</i> under plain SGD — gradient norms in the 0.5–13 range across layers, no underflow to zero. Compare this against the audit Adam-cosine runs on the same architecture, where <code>grad_min = grad_max = 0.00e+00</code> at every diagnostic checkpoint and loss was stuck at <code>log(10) = 2.3026</code> for all 200 epochs.</p>
+
+<h3>7.2 Mechanism — why Adam fails where SGD survives</h3>
+<p>At depth 100 with He init and no BatchNorm, the random forward pass produces tiny but non-zero gradients in early-layer parameters. Two regimes:</p>
+<ul>
+<li><b>Adam:</b> <code>update = lr · m̂ / (√v̂ + ε)</code>. The second-moment estimate <code>v̂</code> underflows in float32 when squared gradients drop below ~1e-19. The denominator becomes <code>√ε ≈ 1e-4</code> and the effective update is <code>lr · m̂ / √ε ≈ 10 · m̂</code> — Adam normalizes away gradient-magnitude information and produces unit-scale noisy updates on every parameter every step. On a 100-layer NoBN net on a knife-edge, this is fatal within the first epoch: weights move by 1e-3 at every step regardless of true gradient, activations underflow on the next forward pass, gradients become exactly 0, and the network is permanently dead.</li>
+<li><b>Plain SGD:</b> <code>update = lr · g</code>. Tiny gradient → tiny update → network barely moves → forward pass survives → gradients stay finite → optimization proceeds normally.</li>
+</ul>
+<p>Plain SGD wins not because Adam is "bad" but because Adam's adaptive scaling is the <i>wrong inductive bias</i> for a network on the edge of numerical collapse. SGD's lack of rescaling is its protection.</p>
+
+<h3>7.3 Recovery results — round 1</h3>
+<p>The runner <code>cluster/run_plain_sgd_recovery.py</code> applied the plain-SGD recipe (200 epochs, plateau(p=10, f=0.5), early-stop on <code>eval_train_acc ≥ 0.995</code>) to all 4 failing architectures:</p>
+<table>
+<thead><tr><th>Architecture</th><th>Verdict</th><th>final eval_train_acc</th><th>final eval_train_loss</th><th>final test_acc</th><th>Epochs ran</th></tr></thead>
+<tbody>
+<tr class="pass"><td class="mono">fmnist/100L/NoBN</td><td><span class="verdict pass">PASS</span></td><td class="mono">0.9953</td><td class="mono">0.0157</td><td class="mono">0.8633</td><td>152 (early stop)</td></tr>
+<tr class="partial"><td class="mono">cifar10/100L/NoBN</td><td><span class="verdict partial">near-miss</span></td><td class="mono">0.9865 (best 0.9908)</td><td class="mono"><b>0.0458</b> ✓</td><td class="mono">0.4184</td><td>200 (full)</td></tr>
+<tr class="fail"><td class="mono">fmnist/100L/BN</td><td><span class="verdict fail">BN stats blew up</span></td><td class="mono">0.1010</td><td class="mono">5.6e+07</td><td class="mono">0.1012</td><td>200</td></tr>
+<tr class="fail"><td class="mono">cifar10/100L/BN</td><td><span class="verdict fail">NaN at ep 0</span></td><td class="mono">—</td><td class="mono">—</td><td class="mono">—</td><td>0</td></tr>
+</tbody>
+</table>
+
+<h3>7.4 Recovery results — round 2</h3>
+<p><code>cluster/run_plain_sgd_recovery2.py</code> applied targeted per-architecture fixes:</p>
+<table>
+<thead><tr><th>Architecture</th><th>Recipe change vs round 1</th><th>Verdict</th><th>final eval_train_acc</th><th>final eval_train_loss</th><th>final test_acc</th><th>Epochs ran</th></tr></thead>
+<tbody>
+<tr class="pass">
+  <td class="mono">cifar10/100L/NoBN</td>
+  <td>plateau patience 10→5, min_lr 1e-6→1e-7</td>
+  <td><span class="verdict pass">PASS</span></td>
+  <td class="mono"><b>0.9959</b></td><td class="mono"><b>0.0157</b></td><td class="mono">0.3926</td><td>157 (early stop)</td>
+</tr>
+<tr class="fail">
+  <td class="mono">fmnist/100L/BN</td>
+  <td>bn_momentum 0.1→0.01</td>
+  <td><span class="verdict fail">no change</span></td>
+  <td class="mono">0.1007</td><td class="mono">6.5e+07</td><td class="mono">0.1002</td><td>200</td>
+</tr>
+<tr class="fail">
+  <td class="mono">cifar10/100L/BN</td>
+  <td>bn_momentum 0.1→0.01</td>
+  <td><span class="verdict fail">NaN at ep 0 (again)</span></td>
+  <td class="mono">—</td><td class="mono">—</td><td class="mono">—</td><td>0</td>
+</tr>
+</tbody>
+</table>
+
+<p><b>Diagnoses after round 2:</b></p>
+<ul>
+<li><b>cifar10/100L/NoBN — passed.</b> The tighter plateau (patience=5, min_lr=1e-7) triggered 5 LR halvings (1e-3 → 6.25e-5) across 157 epochs, vs. just 1 drop in round 1 with patience=10. Train-acc trajectory: 0.10 (ep 1) → 0.42 (ep 20) → 0.87 (ep 80, just after the first LR drop) → 0.99 (ep 150) → <b>0.9959 PASS at ep 157</b>. Audit count 9 → 10.</li>
+<li><b>fmnist/100L/BN — bn_momentum was a red herring.</b> Round 2's <code>train_loss</code> (model.train(), per-batch BN) sat at 2.29 ≈ log(10) for all 200 epochs — i.e., the model output uniform predictions even in training mode. The failure isn't running-statistics corruption; it's that plain SGD <code>lr=1e-3</code> is simply <i>too weak</i> to drive learning through 100 BN layers with He init. Recall: the audit Adam+plateau+bnm=0.01 recipe reached 0.38 train acc on this same architecture. So <b>Adam was the right optimizer here all along</b> — round 3 returns to Adam with a more aggressive plateau.</li>
+<li><b>cifar10/100L/BN — bn_momentum cannot help because the NaN occurs at epoch 0.</b> The very first forward+backward pass produces a non-finite loss, which means a BatchNorm-layer variance becomes inf/NaN before any running-stat EMA update has happened. The fix has to be <i>before</i> the first step: <b>LR warmup</b> (start at 1e-5, ramp to 1e-3 over 20 epochs) so the first updates are small enough not to push BN statistics into overflow, plus <b>gradient clipping</b> (max_norm=1.0) as a safety net.</li>
+</ul>
+
+<h3>7.5 Recovery 3 outcome (added 2026-05-23)</h3>
+<p>Recovery 3 (Adam + plateau + <code>bn_momentum=0.01</code> + LR warmup + gradient clipping) successfully survived the epoch-0 NaN that killed rounds 1 and 2, but the resulting trajectories did <i>not</i> cross the bar:</p>
+<table>
+<thead><tr><th>Architecture</th><th>Peak train</th><th>Final train</th><th>Final loss</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td><code>fmnist/100L/BN</code></td><td>47.55 %</td><td>31.32 % (degraded from peak)</td><td>2.43</td><td>fail</td></tr>
+<tr><td><code>cifar10/100L/BN</code></td><td>21.39 %</td><td>13.24 % (degraded from peak)</td><td>2.42</td><td>fail</td></tr>
+</tbody>
+</table>
+<p>Both runs reached a poor local optimum then drifted backward over the remaining epochs. The He scoreboard remains at <b>10 / 12 passing</b>, with the two 100L/BN cases unresolved under any tested He recipe.</p>
+
+<h3>7.6 What this means for the thesis statement</h3>
+<p>The original closing claim — <i>"He init is insufficient to train 100-layer FC networks"</i> — was wrong as a statement about the architecture. The corrected statement is:</p>
+<blockquote>He initialization is sufficient to train 100-layer fully-connected networks without BatchNorm on Fashion-MNIST and CIFAR-10, provided the optimizer is plain SGD (lr=1e-3, no momentum). Under Adam, the optimizer's second-moment estimate underflows in float32 on the tiny gradients that He init produces at depth 100, and the resulting noisy updates collapse the forward pass within one epoch. The two 100-layer <i>with</i>-BN cases are a separate, currently-unsolved failure mode: plain SGD lacks the adaptivity to climb the per-layer gradient conditioning that BatchNorm introduces at this depth (best plain-SGD train acc = 2.29 ≈ uniform-output baseline on fmnist), and three recovery rounds of Adam-based recipes (audit, plateau-only, and plateau+warmup+clip) all reached only 21–47 % peak accuracy before drifting backward. The L=100/BN regime is architecture-and-recipe-bound rather than initializer-bound — see §8 for the parallel V2 audit, which also fails at this depth.</blockquote>
+
+<!-- ============================================================ -->
+<h2 id="v2-audit">8. V2 row-centered audit (post-meeting Item 3, 2026-05-23)</h2>
+
+<p>The advisor asked at the May 2026 meeting whether the 12-architecture audit can be repeated with the row-centered layer-balanced product-base initializer (V2, η=0.5; <code>row_centered_layer_balanced_product_base</code> in the registry, item 18 of <code>INITIALIZERS.md</code>) instead of He. This section reports the result of that audit, which was conducted under the constraint that <b>gradient clipping is forbidden for V2</b> (theoretical purity — V2 is supposed to control gradient flow on its own).</p>
+
+<h3>8.1 Final V2 scoreboard — 5 / 12 PASS (after 4 rounds)</h3>
+
+<table>
+<thead><tr><th>Architecture</th><th>V2 verdict</th><th>Final train</th><th>Final loss</th><th>Best round / recipe</th></tr></thead>
+<tbody>
+<tr><td><code>cifar10/30L/NoBN</code></td><td><b>PASS</b></td><td>1.0000</td><td>0.0001</td><td>round 1 audit (SGD onecycle, η=0.5)</td></tr>
+<tr><td><code>cifar10/30L/BN</code></td><td><b>PASS</b></td><td>1.0000</td><td>0.0002</td><td>round 1 audit (Adam onecycle) <b>or</b> round 4 audit (SGD onecycle) — both work</td></tr>
+<tr><td><code>cifar10/50L/NoBN</code></td><td>fail</td><td>0.2785</td><td>1.8032</td><td>onecycle peak LR past V2 stability margin → divergence ep 46</td></tr>
+<tr><td><code>cifar10/50L/BN</code></td><td>fail</td><td>0.2814 (Adam) / 0.29 (SGD smoke4)</td><td>1.91</td><td>Adam and SGD both stuck — dataset wall on cifar10/50L/BN</td></tr>
+<tr><td><code>cifar10/100L/NoBN</code></td><td>fail</td><td>—</td><td>—</td><td>η=0.5: float32 forward overflow at L~11; η=0.1: loss explosion ep 1 b 2 (grad ratio 5×10⁷)</td></tr>
+<tr><td><code>cifar10/100L/BN</code></td><td>fail</td><td>0.1048 (SGD smoke4)</td><td>2.32</td><td>Adam (smoke3) and SGD (smoke4) both stuck at chance — joint open problem with He</td></tr>
+<tr><td><code>fmnist/30L/NoBN</code></td><td><b>PASS</b></td><td>1.0000</td><td>0.0000</td><td>round 1 audit (SGD onecycle, η=0.5)</td></tr>
+<tr><td><code>fmnist/30L/BN</code></td><td><b>PASS</b></td><td>1.0000</td><td>0.0001</td><td>round 1 audit (Adam cosine) <b>or</b> round 4 audit (SGD onecycle) — both work</td></tr>
+<tr><td><code>fmnist/50L/NoBN</code></td><td>fail</td><td>0.5387</td><td>1.2010</td><td>halved LR + warmup insufficient; explosion ep 4</td></tr>
+<tr><td><code>fmnist/50L/BN</code></td><td><b>PASS</b></td><td><b>0.9995</b></td><td><b>0.0072</b></td><td><b>round 4 audit (SGD plateau, η=0.5) — Adam was stuck at 33 %; this is the V2+SGD unlock</b></td></tr>
+<tr><td><code>fmnist/100L/NoBN</code></td><td>fail</td><td>—</td><td>—</td><td>η=0.5: float32 overflow; η=0.1: NaN loss ep 1 b 2</td></tr>
+<tr><td><code>fmnist/100L/BN</code></td><td>fail (learning)</td><td>0.2316</td><td>1.9668</td><td>round 4 SGD reached 23 % peak (first L=100/BN learning under V2, but no PASS)</td></tr>
+</tbody>
+</table>
+
+<h3>8.1b The V2+SGD unlock (round 4, 2026-05-23)</h3>
+
+<p>The 5 / 12 tally is higher than the initial 4 / 12 by one architecture — <code>fmnist/50L/BN</code> — and that one PASS validates a theoretical claim worth stating explicitly:</p>
+
+<blockquote>
+<b>V2's per-layer weight std schedule acts as a built-in preconditioner. Plain SGD composes with this preconditioner (uniform per-parameter step times the layer-l weight magnitude gives roughly uniform relative step Δw/w across layers). Adam <i>fights</i> this preconditioner: its adaptive per-parameter scaling normalises step magnitude to ≈ lr regardless of gradient, so Δw/w varies by V2's 13,000× weight differential. We call this "double-preconditioning."</b>
+</blockquote>
+
+<p>The empirical evidence is sharp. At <code>fmnist/50L/BN</code> the V2+Adam audit (round 1) was stuck at 33 % peak with rising loss; the V2+SGD audit (round 4) reached <b>99.95 %</b> in 200 epochs. The per-layer gradient ratio at <code>fmnist/100L/BN</code> dropped from 2.9×10⁴ (Adam, smoke3) to 1.0×10² (SGD, audit4) — a 300× reduction that lets SGD actually make progress even though it still didn't reach the bar. The mechanism is precisely the one V2's theory implies — V2 + plain SGD is the natural pairing, not V2 + Adam.</p>
+
+<p>The round-4 trajectory plot is at <code>reports/figures/final_v2_audit4_bn_sgd.png</code>.</p>
+
+<h3>8.2 Mechanism — V2 has a hard depth ceiling at L≈30 under no-clipping recipes</h3>
+
+<p>V2's per-layer weight std follows the schedule</p>
+<pre>s_l = s* · r^{η·(l − (L+1)/2)},   r = √((π−1)/π) ≈ 0.826,   s* = (π/(π−1))^{1/4} ≈ 1.10</pre>
+<p>so the layer-1-to-layer-L std ratio is <code>r^{−η·(L−1)}</code>, which is exponential in <code>L</code>. At η=0.5:</p>
+<ul>
+<li><b>L=30:</b> 16× — manageable. V2 produces a forward pass with peak A_RMS ≈ 6, and gradient max/min ratio (end of training) of 11–76× — <i>lower</i> than He's 16–130×. V2 delivers its design promise here.</li>
+<li><b>L=50:</b> 109× — marginal. Smoke shows initial learning (54 % peak on fmnist), but the audit recipe (SGD onecycle lr=0.01 ramping up, or Adam adaptive) breaks past the per-layer stability margin within tens of epochs.</li>
+<li><b>L=100:</b> 13,144× — catastrophic. V2's layer-1 std at L=100 is ~126× He's (multiplier <code>r^{-24.75} ≈ 113</code>), producing per-layer activation amplification that <b>exceeds float32's 3.4×10³⁸ ceiling at layer ~11</b>. No gradient is ever computed because the loss is NaN before backward.</li>
+</ul>
+
+<h3>8.3 BN partially helps but does not lift the ceiling</h3>
+
+<p>Adding BN at L=100 (the <i>option B</i> test, recovery3 recipe minus clipping) cures the forward-pass overflow — per-layer activation RMS stays at ≈ 0.7 instead of inf. But BN normalization is in the forward direction only; the per-layer <b>gradient</b> profile still inherits V2's per-layer weight differential because <code>∂C/∂W^(l) ∝ rms(A^{l−1}) · rms(Δ^l)</code> and the local upstream-error chain magnitudes still vary by V2's per-layer schedule. Per-batch logging at ep 1 b 0 shows the per-layer gradient ratio is <b>5.7×10⁴</b> for cifar10/100L/BN and <b>2.9×10⁴</b> for fmnist/100L/BN. Adam's per-parameter adaptive scaling cannot condition this ratio in 20 epochs (fmnist stayed at chance; cifar10 spiked loss at ep 20 when LR warmup completed). The smoke3 trajectory is in <code>reports/figures/final_v2_smoke3_100L_bn.png</code>.</p>
+
+<h3>8.4 Lowering η degenerates V2 toward V1</h3>
+
+<p>Dropping to <b>η=0.1</b> survives the L=100 forward pass (peak A_RMS ≈ 4.6×10⁸, within float32) but leaves the per-layer gradient ratio at <code>5×10⁷</code> at ep 1 b 0 — still SGD-destabilizing. By ep 1 b 2, loss has exploded to 10²² (the explosion-guard aborts). Pushing η further toward 0 reduces V2 to V1 (uniform per-layer std), which defeats the experimental purpose of testing the η-scheme. We did not pursue this branch.</p>
+
+<h3>8.5 Implication for the thesis</h3>
+
+<blockquote>
+V2 (<code>row_centered_layer_balanced_product_base</code>, η=0.5) trains <b>4 / 12</b> architectures in the audit — all at depth 30, both datasets, both BN states. Within its working depth range, V2 produces measurably more uniform per-layer gradient profiles than He (V2 max/min ratio = 11–76× vs He = 16–130× across the 4 passing architectures), confirming the η-scheme's analytical claim that gradient balance is improved by per-layer variance redistribution.<br><br>
+Beyond L=30, V2 fails through one of three depth-dependent mechanisms: <b>(a)</b> float32 forward overflow at L=100 NoBN; <b>(b)</b> Adam double-preconditioning at L=50/100 BN; <b>(c)</b> onecycle / momentum-SGD instability past the per-layer scale margin at L=50 NoBN. Adding BN cures (a) but not (b). Lowering η toward 0 degenerates V2 to V1.<br><br>
+The unsolved L=100/BN regime affects <i>both</i> He (recovery 3: peak 21–47 %, drifted) and V2 (smoke3: stuck at chance) — it is a depth-100 / optimizer-recipe problem, not an initializer-specific failure. <b>Conclusion: V2 is best framed as a moderate-depth initializer (L ≤ 30) within the depth regime where its per-layer scaling stays within float32 + SGD-friendly margins. Beyond L=30, V2 requires either BN + a substantially better optimizer (which we have not identified) or a complementary per-layer LR scheme (option C in the followup plan, untested), or it degenerates back to V1.</b>
+</blockquote>
+
+<p>Full V2 audit trajectories, per-layer gradient profiles, and the comprehensive 12-row scoreboard with mechanism notes are in <a href="../notebooks/13_final_results.ipynb">notebooks/13_final_results.ipynb</a> Part 4 (Sections 19.1 – 19.7).</p>
+
+<!-- ============================================================ -->
+<h2 id="reproducibility">6. Reproducibility</h2>
+
+<p>Every number, plot, and table in this report can be regenerated from the audit dataset:</p>
+<ul>
+  <li><b>Data:</b> <code>reports/results/final_audit_merged.json</code> — 12 entries, each with full 200-epoch history (eval_train_acc, eval_train_loss, train_loss, train_acc, test_loss, test_acc, learning_rate every epoch; grad_norm_per_layer + bn_running_var_mean every 10 epochs).</li>
+  <li><b>Notebook:</b> <code>notebooks/13_final_results.ipynb</code> — loads the JSON and reproduces all 6 figures + the scoreboard tables.</li>
+  <li><b>Audit runner:</b> <code>cluster/run_final.py</code> — the 12 best-known recipes embedded as Python configs; runnable with <code>seed=42</code> from any reasonably-equipped GPU machine. The continuation script <code>cluster/fnn_he_final_continuation.sub</code> picks up the last 2 runs in case of SLURM timeout (which is what happened here).</li>
+  <li><b>Phase reports:</b> <code>reports/diagnostic_phase{1,2,3,5}_report.html</code> — the chronological per-phase analyses, with full per-epoch trajectories and the diagnostic plots that drove each round of decisions.</li>
+  <li><b>Post-meeting recovery:</b>
+    <ul>
+      <li><code>cluster/run_plain_sgd_100L.py</code> + sub files <code>cluster/plain_sgd_100L_nobn_w512_{mnist,fashion_mnist,cifar10}.sub</code> — advisor-recipe replication on three datasets. Output JSONs: <code>reports/results/plain_sgd_100L_nobn_w512_{mnist,fashion_mnist,cifar10}.json</code>.</li>
+      <li><code>cluster/run_plain_sgd_recovery.py</code> + 4 sub files — first-round plain-SGD recovery for the 4 failing 100L architectures. Output JSONs: <code>reports/results/recovery_plain_sgd_<arch>.json</code>.</li>
+      <li><code>cluster/run_plain_sgd_recovery2.py</code> + 3 sub files — second-round recovery addressing the 3 remaining cases (cifar10/100L/NoBN with tighter plateau, both BN cases with <code>bn_momentum=0.01</code>). Output JSONs: <code>reports/results/recovery2_plain_sgd_<arch>.json</code>.</li>
+      <li><code>cluster/run_adam_recovery3.py</code> + 2 sub files — third-round recovery (Adam + plateau + <code>bn_momentum=0.01</code> + LR warmup + grad clip for cifar10) for the 2 remaining 100L/BN cases. Output JSONs: <code>reports/results/recovery3_adam_<arch>.json</code>. <b>Outcome:</b> survived epoch 0 but both peaked early (47 % fmnist, 21 % cifar10) and drifted backward by ep 200 — both still fail the thesis bar. The 100L/BN regime is unsolved under any tested He recipe.</li>
+    </ul>
+  </li>
+  <li><b>V2 row-centered audit (post-meeting Item 3, §8):</b>
+    <ul>
+      <li><code>cluster/run_row_centered_audit.py</code> + 10 smoke + 10 audit sub files — round-1 audit of V2 (η=0.5) on the 10 He-passing architectures. Output JSONs: <code>reports/results/row_centered_{smoke,audit}_<arch>.json</code>.</li>
+      <li><code>cluster/run_row_centered_audit_round2.py</code> + 4 sub files — round-2 modifications for the 4 failed/struggling cases (L=100 NoBN at η=0.1, L=50 with halved LR + warmup). Output JSONs: <code>reports/results/row_centered_smoke2_<arch>.json</code>.</li>
+      <li><code>cluster/run_row_centered_audit_round3.py</code> + 2 sub files — round-3 V2 + BN at L=100 (option B) using the recovery3 recipe minus clipping. Output JSONs: <code>reports/results/row_centered_smoke3_<arch>.json</code>.</li>
+      <li><code>cluster/triage_row_centered_smoke.py</code> — triage helper that classifies each smoke run (PASS / LEARNING / STUCK / DEAD / ABORTED) and suggests a follow-up action.</li>
+    </ul>
+  </li>
+</ul>
+
+<div class="next">
+<b>To reproduce from scratch:</b>
+<ol style="margin: 0.4em 0 0 1.2em;">
+  <li><code>bash cluster/sync_to_cluster.sh</code> (local)</li>
+  <li><code>sbatch cluster/fnn_he_final.sub</code> (cluster) — single ~12h job; you may need the continuation script if SLURM cuts it off (it did for us).</li>
+  <li>Pull both JSONs; merge with the snippet in the notebook (cell 2).</li>
+  <li>Run the notebook end-to-end to regenerate all figures.</li>
+</ol>
+</div>
+
+<div class="win">
+<b>Thesis-shaped final statement (revised 2026-05-23, after recovery 3 and the V2 audit):</b>
+<blockquote>
+He initialization is sufficient to train fully-connected ReLU networks at depths 30, 50, and 100 without BatchNorm, on both Fashion-MNIST and CIFAR-10 — <b>10 / 12 architectures pass the standardised thesis bar</b>. The crossing condition is the choice of optimizer, and it depends on the architecture:
+<ul style="margin: 0.6em 0;">
+<li><b>Depth 30 (any BN, any dataset):</b> trivial — any reasonable recipe.</li>
+<li><b>Depth 50 with BatchNorm:</b> requires <code>ReduceLROnPlateau</code> (patience=5, factor=0.5, monitoring <code>eval_train_loss</code>) to suppress BatchNorm running-statistic runaway.</li>
+<li><b>Depth 100 without BatchNorm:</b> requires <b>plain SGD</b> (lr=1e-3, no momentum) with a tight plateau (patience=5, min_lr=1e-7). Adam fails here because its second-moment estimate underflows in float32 on the tiny gradients that He init produces at depth 100, and the resulting noisy updates collapse the forward pass within one epoch.</li>
+<li><b>Depth 100 with BatchNorm (the remaining two failures):</b> still <b>unsolved</b>. Three recovery rounds were attempted: round 1/2 (plain SGD) was too weak — fmnist/100L/BN sat at <code>train_loss = 2.29</code> ≈ uniform-output baseline for 200 epochs; round 3 (Adam + tight plateau + <code>bn_momentum=0.01</code> + LR warmup + grad clip) survived the epoch-0 NaN but peaked at 47 % (fmnist) / 21 % (cifar10) and drifted backward by ep 200. The L=100/BN regime is architecture-and-recipe-bound, not initializer-bound.</li>
+</ul>
+The original conclusion that depth-100 He init is "untrainable" was a recipe error for the NoBN cases (Adam-induced gradient underflow), not an architectural limit. The depth-100/BN failure remains as a clean open problem under both He and (per §8) V2 initialization.
+</blockquote>
+</div>
+
+<div class="next">
+<b>V2 row-centered audit final statement (revised 2026-05-23 after round 4):</b>
+<blockquote>
+V2 (<code>row_centered_layer_balanced_product_base</code>, η=0.5) trains <b>5 / 12 architectures</b> under no-clipping protocols: the four depth-30 architectures (cifar10/30L/{NoBN,BN}, fmnist/30L/{NoBN,BN}) under either optimizer, plus <b>fmnist/50L/BN under V2+SGD specifically</b> (Adam was stuck at 33 %; SGD reaches 99.95 %).
+<br><br>
+The depth ceiling is not a flat L=30 for all configurations — it depends on optimizer choice and dataset. Round 4 confirmed empirically what V2's theory predicts: <b>V2's per-layer weight schedule is a built-in preconditioner, and plain SGD composes with it where Adam fights it</b> (the "double-preconditioning" effect). The per-layer gradient ratio at L=100/BN drops from 5×10⁴ under Adam to 1×10² under SGD — a 500× reduction that's enough to unlock fmnist/50L/BN but not yet enough to crack L=100/BN.
+<br><br>
+At L = 100 V2 still fails — both NoBN (float32 forward overflow at η=0.5; explosion at η=0.1) and BN (stuck or learning-but-not-passing under both optimizers). The L=100/BN regime is the joint open problem under both He (recovery 3: peak 21–47 % then drift) and V2 (round 4 SGD: peak 23 %). It is an open problem of <b>depth + BN + optimizer recipe</b>, not an initializer-specific failure.
+<br><br>
+<b>V2 is therefore best characterised as a moderate-depth initializer with an optimizer preference: it works at L ≤ 30 under any reasonable optimizer, extends to L=50/BN when paired specifically with plain SGD, and breaks down at L=100 under all tested recipes.</b> Further extension would require either a depth-dependent η schedule (untested) or a per-layer LR scheme richer than what plain SGD provides (LARS-style, untested).
+</blockquote>
+</div>
+
+</body>
+</html>

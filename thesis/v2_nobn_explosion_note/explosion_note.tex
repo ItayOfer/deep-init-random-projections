@@ -1,0 +1,174 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+\title{Why V2 (NoBN) Explodes at Depth:\\ A Note on the Per-Layer Variance Schedule}
+\author{}
+\date{\today}
+
+\newcommand{\sstar}{s^{*}}
+
+\begin{document}
+\maketitle
+
+\section{The two formulas are the same formula}
+
+The per-layer weight standard deviation is
+\begin{equation}\label{eq:sigma}
+  \sigma_\ell \;=\; \sqrt{\frac{2}{d_{\ell-1}}}\;\cdot\;\sstar\;\cdot\; r^{\,\eta\,(\ell - (L+1)/2)} .
+\end{equation}
+We give the depth-dependent part its own name, $s_\ell$:
+\begin{equation}\label{eq:sell}
+  s_\ell \;\equiv\; \sstar \cdot r^{\,\eta\,(\ell - (L+1)/2)} .
+\end{equation}
+Substituting \eqref{eq:sell} into \eqref{eq:sigma} gives the compact form
+\begin{equation}\label{eq:sigma-compact}
+  \boxed{\;\sigma_\ell \;=\; \sqrt{\frac{2}{d_{\ell-1}}}\;\cdot\; s_\ell\;}
+\end{equation}
+\textbf{There is only one factor $r^{\eta(\cdots)}$.} It lives inside $s_\ell$.
+Equations \eqref{eq:sigma} and \eqref{eq:sigma-compact} are identical; the second
+just abbreviates $\sstar\, r^{\eta(\cdots)}$ as $s_\ell$. No double counting.
+
+\medskip
+The constants (for ReLU):
+\[
+  r = \sqrt{\frac{\pi-1}{\pi}} \approx 0.826 \quad(<1), \qquad
+  \sstar = \Big(\frac{\pi}{\pi-1}\Big)^{1/4} \approx 1.1006 .
+\]
+$\sstar$ is \emph{always} $1.1006$. It never changes. It is \emph{not} $63$.
+
+\section{What $s_\ell$ actually equals (where ``63'' comes from)}
+
+Take the run \texttt{cifar10/50L}, $\eta=0.9$, and look at layer $\ell=2$
+($L=50$, hidden fan-in $d=500$).
+
+\begin{enumerate}[label=\textbf{Step \arabic*.}, leftmargin=*]
+  \item Exponent:
+  \[
+    \eta\Big(\ell - \tfrac{L+1}{2}\Big)
+    = 0.9\,(2 - 25.5) = 0.9 \times (-23.5) = -21.15 .
+  \]
+  \item Raise $r$ to that exponent. Because $r<1$, a \emph{negative} power gives a
+  \emph{large} number:
+  \[
+    r^{-21.15} = \Big(\tfrac{1}{0.826}\Big)^{21.15} = 1.21^{\,21.15} \approx 57.5 .
+  \]
+  \item Multiply by the constant $\sstar$ to get $s_\ell$:
+  \[
+    s_{2} = \sstar \cdot r^{-21.15} = 1.10 \times 57.5 \approx \mathbf{63.3}.
+  \]
+  \textcolor{red}{This $63$ is $s_2$ --- not $\sstar$.} $\sstar$ is still $1.10$.
+  \item Multiply by the He factor to get the weight std:
+  \[
+    \sigma_2 = \sqrt{\tfrac{2}{500}}\cdot s_2 = 0.0632 \times 63.3 \approx \mathbf{4.0}.
+  \]
+\end{enumerate}
+
+So $s_\ell$ is the constant $\sstar=1.10$ \emph{after} the schedule multiplies it by
+the ramp $r^{\eta(\ell-(L+1)/2)}$. In the early layers that ramp is a big number
+(57 at layer~2), so $s_\ell$ becomes large (63), and the weight std becomes $4.0$.
+
+\section{Why the $\sqrt{2/d}$ does \emph{not} save us}
+
+You are right that $\sqrt{2/d_{\ell-1}}$ is the standard He compensation, and it
+\textbf{does} work: it exactly cancels the $\sqrt{d}$ gain of a matrix multiply.
+
+\paragraph{The hidden $\sqrt{d}$.} When a vector $x$ (per-component RMS $a$) passes
+through a weight matrix $W\in\mathbb{R}^{d\times d}$ whose entries have std $\sigma$,
+each output is a sum of $d$ products, so its RMS is
+\[
+  \mathrm{rms}(Wx) \approx \sigma \sqrt{d}\; a .
+\]
+The per-layer gain is therefore $\sigma\sqrt{d}$, \emph{not} $\sigma$.
+
+\paragraph{He cancels it.} With $\sigma=\sqrt{2/d}$ we get
+$\sigma\sqrt{d} = \sqrt{2}$, and after ReLU (which removes half the energy) the net
+gain is $\approx 1$. Signal preserved at any depth.
+
+\paragraph{But the schedule re-inserts $s_\ell$.} With the full $\sigma_\ell$,
+\[
+  \text{per-layer gain} = \sigma_\ell \sqrt{d}
+  = \underbrace{\sqrt{\tfrac{2}{d}}\,\sqrt{d}}_{=\sqrt 2}\;\cdot\; s_\ell
+  \;=\; \sqrt{2}\, s_\ell .
+\]
+After the ReLU/row-centering factor this becomes the clean net gain
+\begin{equation}\label{eq:gain}
+  \boxed{\;g_\ell = r\, s_\ell\;}
+\end{equation}
+which \textbf{contains no $d$ at all} --- the $\sqrt{d}$ already cancelled. The gain
+is governed entirely by $s_\ell$:
+\[
+  g_2 = r\, s_2 = 0.826 \times 63.3 \approx 52 .
+\]
+Each pass through layer~2 multiplies the signal by about $52$.
+
+\paragraph{The control case.} If the schedule were uniform ($\eta=0$), then
+$s_\ell = \sstar = 1.10$ at every layer and
+\[
+  g_\ell = r\,\sstar = 0.826 \times 1.10 = 0.909 \approx 1 ,
+\]
+so nothing explodes --- the $\sqrt{2/d}$ compensation handles everything.
+\textbf{The explosion is caused entirely by the $\eta$-schedule making $s_\ell$ large
+in the early layers; it is not a failure of the $\sqrt{2/d}$ term.}
+
+\section{How a std of $\sim$4 explodes the activations}
+
+A single weight of value $\sim 4$ is harmless. What explodes is the \emph{signal},
+because the per-layer gains \eqref{eq:gain} \emph{compound through depth}. For
+\texttt{cifar10/50L}, $\eta=0.9$:
+
+\begin{center}
+\begin{tabular}{rrrr}
+\toprule
+layer $\ell$ & $s_\ell$ & $\sigma_\ell$ & net gain $g_\ell=r\,s_\ell$ \\
+\midrule
+1  & 75.2 & 1.92 & 62 \\
+2  & 63.3 & 4.00 & 52 \\
+5  & 37.7 & 2.39 & 31 \\
+10 & 15.9 & 1.01 & 13 \\
+25 &  1.20 & 0.076 & 0.99 \\
+45 &  0.04 & 0.0024 & 0.03 \\
+50 &  0.02 & 0.0010 & 0.01 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The early layers have gain $\gg 1$ (52, 31, 13, \dots); the late layers have gain
+$\ll 1$. The cumulative activation RMS is the running product of these gains. It
+\textbf{balloons} through the early high-gain layers, peaks near the middle, then is
+squashed back down by the late low-gain layers.
+
+\paragraph{Why the network still ``starts'' at $L=50$.} The product of \emph{all}
+$50$ gains is $\approx 1$ by design ($g_\ell = r s_\ell$, and the $s_\ell$ are
+symmetric about the middle), so input~$\to$~output is balanced and the initial loss
+is a sane $\ln 10 \approx 2.30$. The activations bulge in the middle but stay finite,
+so the first batch computes. Then one SGD step perturbs the giant early weights,
+breaks the delicate up-then-down balance, and the activations blow up within a few
+steps (observed: NaN at batch~10).
+
+\paragraph{Why $L=100$ dies at birth.} The bulge grows like
+$r^{-\eta L^2/8}$ --- \emph{quadratic in depth}. At $L=100$ (even with a smaller
+$\eta=0.36$, hence smaller individual $s_\ell$) the running product reaches
+$\sim 10^{35}$ at the middle layer. Squared quantities inside the matmul then exceed
+the float32 ceiling ($3.4\times10^{38}$), so the forward overflows to \texttt{inf} on
+the very first batch --- the loss never even leaves $2.30$ (observed: NaN at batch~8,
+loss frozen at $2.3026$).
+
+\section{One-paragraph summary}
+
+The $\sqrt{2/d_{\ell-1}}$ term is intact and cancels the $\sqrt{d}$ of every matrix
+multiply, exactly as in He init. The constant $\sstar=1.10$ never changes. The
+explosion comes from the schedule factor $r^{\eta(\ell-(L+1)/2)}$: because $r<1$, in
+the early layers (negative exponent) this becomes a large number ($\approx 57$ at
+layer~2), so $s_\ell = \sstar\,r^{\eta(\cdots)} \approx 63$ and the per-layer forward
+gain $g_\ell = r\,s_\ell \approx 52$. Those large early-layer gains compound through
+depth, ballooning the activation signal --- mildly enough at $L=50$ to start and then
+diverge under SGD, and severely enough at $L=100$ to overflow float32 at
+initialization. Raising $\eta$ (for a flatter gradient ratio) makes the early-layer
+$s_\ell$ larger, which is why better gradient conditioning and forward stability pull
+against each other --- the Pareto trade-off.
+
+\end{document}
