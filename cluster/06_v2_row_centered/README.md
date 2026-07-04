@@ -2,7 +2,7 @@
 
 **Question.** Can V2 (`row_centered_layer_balanced_product_base`, η=0.5) train the same 12-architecture grid that He handles — i.e., is "the right variance in each layer" enough? Gradient clipping forbidden throughout (assert-enforced in the runners).
 
-**Builds on.** He's 10/12 scoreboard from campaigns [04](../04_he_final_audit/README.md)–[05](../05_sgd_recovery/README.md): round 1 runs the *He-passing recipes verbatim* so any deltas are attributable to the initializer. Item 3 of the May 22 post-meeting plan (`docs/plans_handoffs/2026-05-23_followup_plan.md`).
+**Builds on.** He's 10/12 scoreboard from campaigns [04](../04_he_final_audit/README.md)–[05](../05_sgd_recovery/README.md): round 1 runs the *He-passing recipes verbatim* so any deltas are attributable to the initializer. Item 3 of the May-22 follow-up plan.
 
 ## What ran (V2, width 500, seed 42, smoke = 20 ep → audit = 200 ep)
 

@@ -1,7 +1,7 @@
 # Meeting Prep: Product-Balanced Initializers
 
 **Date:** April 13, 2026
-**Notebook:** `notebooks/09_meeting_comparison_executed.ipynb`
+**Notebook:** `notebooks/09_depth_geometry_comparison.ipynb`
 **Figures:** `reports/latex/product_balanced_report/figures/`
 
 ---

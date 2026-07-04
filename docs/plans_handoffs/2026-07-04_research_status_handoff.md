@@ -7,7 +7,7 @@ resume without re-deriving context.
 
 **Grounding note:** Sections marked ✅*verified* were checked directly against files on disk
 (JSON contents, `git status`, `ls -lat`) while writing this. Sections marked 📓*from project
-memory/docs* are drawn from `SUMMARY.md`, `post_meeting_followup_plan.md`, and the dated memory
+memory/docs* are drawn from `SUMMARY.md`, the May-22 follow-up plan (local working notes), and the dated memory
 files; they were point-in-time observations and should be spot-checked before being asserted as
 final thesis claims.
 
@@ -77,7 +77,7 @@ training runs for that idea were never launched.** That is the cliff-edge. ✅*v
 ### Uncommitted code that supports the last work (⚠️ review before organizing)
 `git status` shows **modified, uncommitted**: `src/rp_study/config.py`,
 `src/rp_study/experiments/supervised_training.py`, `src/rp_study/models/classifiers.py`, plus
-`post_meeting_followup_plan.md`. All the May 25 `cluster/*.py`, `cluster/*.sub`, results JSONs and
+the May-22 follow-up plan (local working notes). All the May 25 `cluster/*.py`, `cluster/*.sub`, results JSONs and
 figures are **untracked** (`??`). The GradRescale mechanism for `rcfwd` almost certainly lives in
 these modified `src/` files — **do not lose them.** (`reports/` is intentionally kept out of git
 per user preference.) ✅*verified*
@@ -182,10 +182,10 @@ BN survives numerically but sits at/near chance). This is the empirical basis fo
 `run_plain_sgd_recovery{,2}.py`, `run_adam_recovery3.py`, `run_row_centered_audit{,_round2,3,4}.py`,
 `run_v2_nobn_sgd.py`, `run_he_sgd_lowlr{,2}_smoke.py`, **`run_rcfwd_gradrescale.py`** (newest).
 
-**Notebooks:** `09_meeting_comparison` (V1-vs-V2 + geometry k-NN), `11_eta_sweep_analysis`,
+**Notebooks:** `09_depth_geometry_comparison` (V1-vs-V2 + geometry k-NN), `11_eta_sweep_analysis`,
 `13_final_results` (meeting deliverable, Part 4 = V2 story §19.1–19.8).
 
-**Key docs at root:** `SUMMARY.md`, `post_meeting_followup_plan.md` (the definitive plan + §8 open
+**Key docs at root:** `SUMMARY.md`, the May-22 follow-up plan (local working notes; definitive plan + §8 open
 follow-ups + §7 definition-of-done), `INITIALIZERS.md` (math for all inits), `CONTEXT.md`, `CLAUDE.md`.
 
 **Memory files:** `project_state_may{22,23}_2026.md`, `feedback_no_grad_clipping.md`
@@ -203,7 +203,7 @@ follow-ups + §7 definition-of-done), `INITIALIZERS.md` (math for all inits), `C
 ---
 
 ## Suggested first moves for the organizing session
-1. Read `post_meeting_followup_plan.md` §7–8 (definition-of-done + open follow-ups) and
+1. Read the May-22 follow-up plan §7–8 (local working notes; definition-of-done + open follow-ups) and
    `SUMMARY.md` "Current state / V2 audit" — they are the authoritative narrative.
 2. Decide the disposition of the **uncommitted `src/` changes** (the GradRescale hook) — review,
    then commit or stash deliberately.

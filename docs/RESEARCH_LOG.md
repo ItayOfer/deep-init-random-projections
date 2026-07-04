@@ -23,7 +23,7 @@ Chronological narrative of the project: what each phase asked, what was run, wha
 - Registered 19 initializer variants (partial centering α, layer-balanced η schedules, kernel-preserving optimization) in the registry; all documented in `INITIALIZERS.md`.
 - Geometry claim revised later (Phase 5): PCA "spread" was misleading; k-NN accuracy shows row-centered variants collapse class structure at depth just like He, via the opposite mechanism (**spread ≠ structure**).
 
-**Key artifacts:** `docs/reports/gradient_diagnostics_analysis.md`, `docs/milestones/2026-03-16_gradient_trap_briefing.md`, `notebooks/05–07`, `cluster/01_geometry/`.
+**Key artifacts:** `docs/reports/gradient_diagnostics_analysis.md`, `notebooks/05–07`, `cluster/01_geometry/`.
 
 ## Phase 3 — Designing V1 and V2 (Apr 12 – May 4)
 
@@ -43,7 +43,7 @@ Chronological narrative of the project: what each phase asked, what was run, wha
 - **Final audit** (May 16–18, `cluster/04_he_final_audit/`): 200-epoch unified audit → **8/12 PASS** (`final_audit_merged.json`).
 - **Recovery** (May 22–23, `cluster/05_sgd_recovery/`): the 100L/NoBN failures were an **Adam pathology** (second-moment underflow on tiny float32 gradients) — plain SGD rescued both → **He 10/12 PASS**. Both 100L/BN cases resisted every recipe (recovery3: Adam + plateau + warmup peaked 21–47% then drifted) → the **100L+BN open wall**.
 
-**Key artifacts:** `docs/reports/final_report.html`, `docs/milestones/2026-05-21_audit_results_briefing.html`, `notebooks/13_final_results.ipynb`.
+**Key artifacts:** `docs/reports/final_report.html`, `notebooks/13_final_results.ipynb`, `cluster/04_he_final_audit/README.md`, `cluster/05_sgd_recovery/README.md`.
 
 ## Phase 5 — V2 on trial: the depth ceiling and double preconditioning (May 22 – 24)
 
@@ -52,9 +52,9 @@ Chronological narrative of the project: what each phase asked, what was run, wha
 - V2 audit rounds 1–4 (`cluster/06_v2_row_centered/`, no gradient clipping — enforced by assertion): **5/12 PASS** — all four 30L architectures + fmnist/50L/BN.
 - **Depth ceiling:** layer-1 weight std scales as `r^{−η(L−1)/2}`; at L=100 that is ~126× He, overflowing float32 by layer ~11. No η rescues it.
 - **Double preconditioning:** V2's per-layer scaling composes with SGD's uniform step but fights Adam's adaptive scaling — switching fmnist/50L/BN from Adam to plain SGD took it from a stuck 33% to **99.95%**, and the per-layer gradient ratio from 5×10⁴ to 1×10².
-- Geometry revision landed here too (k-NN, `notebooks/09_meeting_comparison_executed.ipynb`): He+BN and all row-centered variants sit at chance by 20 layers; He+NoBN keeps 0.639.
+- Geometry revision landed here too (k-NN, `notebooks/09_depth_geometry_comparison.ipynb`): He+BN and all row-centered variants sit at chance by 20 layers; He+NoBN keeps 0.639.
 
-**Key artifacts:** `docs/milestones/2026-05-23_results_briefing.{md,html}`, `docs/plans_handoffs/2026-05-23_followup_plan.md`.
+**Key artifacts:** `docs/reports/final_report.html` (V2 sections), `cluster/06_v2_row_centered/README.md`.
 
 ## Phase 6 — Follow-ups and the untested rcfwd idea (May 25)
 
@@ -64,7 +64,7 @@ Chronological narrative of the project: what each phase asked, what was run, wha
 - **He low-LR probe** (`cluster/08_he_lowlr_probe/`): 100L/BN at LR ≤ 1e-6 survives numerically but stays frozen at chance — confirming the wall is not merely a stability issue.
 - **rcfwd grad-rescale** (`cluster/09_rcfwd_rescale/`): new idea — initialize with `row_centered_forward_balanced` (forward gain exactly 1) and cancel the backward gain `1/r ≈ 1.21` with a custom autograd op (`_GradRescale`: identity forward, multiply gradient by `r` per layer). A closed-form, non-adaptive per-layer LR. At initialization it flattens the error-signal blowup from ~1e8× to ~1.2× and the gradient ratio from 5×10⁷ to ~6× (He-like). Implementation: `grad_rescale` config field + hook in `src/rp_study/models/classifiers.py`; figures in `reports/figures/rcfwd_rescale/`.
 
-**Status (as of Jul 4):** rcfwd smoke + audit subs are prepared but **training was never launched** — this is the project's next action. Full state: `docs/plans_handoffs/2026-07-04_research_status_handoff.md`.
+**Status:** the six rcfwd smoke jobs were first submitted on 2026-07-04; results pending. Full state: `docs/plans_handoffs/2026-07-04_research_status_handoff.md`.
 
 ---
 

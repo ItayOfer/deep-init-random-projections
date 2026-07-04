@@ -24,7 +24,7 @@ Forward-pass probes only — no training, no optimizer.
 | `orthogonal_he` | 0.239 → 0.228 | 49.3 → 14.5 |
 | `row_centered_he_var_adj` | 0.219 → **0.098 (chance)** | 650 → **956 (explodes)** |
 
-Row-centered representations reach ~40× the effective dimension of He by depth 20, yet class structure is *gone* — high-dimensional noise, not preserved geometry. He compresses hard but keeps class-relevant directions. This is the first quantitative appearance of the **"spread ≠ structure"** finding (later confirmed with k-NN across datasets in `notebooks/09_meeting_comparison_executed.ipynb`).
+Row-centered representations reach ~40× the effective dimension of He by depth 20, yet class structure is *gone* — high-dimensional noise, not preserved geometry. He compresses hard but keeps class-relevant directions. This is the first quantitative appearance of the **"spread ≠ structure"** finding (later confirmed with k-NN across datasets in `notebooks/09_depth_geometry_comparison.ipynb`).
 
 **Single layers are not where the difference lives.** The empirical angle maps (`angle_map.json`) of all three inits are essentially identical (output means agree to ~4 decimal places, max std ≤ 0.003) — one layer of any of these behaves like the arc-cosine kernel map. The divergence above is purely an effect of *composition through depth*.
 

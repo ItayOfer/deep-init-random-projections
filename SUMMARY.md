@@ -83,26 +83,24 @@ notebooks/                     # 12 exploratory + dashboard notebooks
   06_gradient_diagnostics.ipynb
   07_kernel_geometry_analysis.ipynb
   08_results_dashboard.ipynb
-  09_meeting_comparison.ipynb
+  09_depth_geometry_comparison.ipynb
   10_fnn_training_curves.ipynb
   11_eta_sweep_analysis.ipynb
 
-cluster/                       # DLC / SLURM workflow
+cluster/                       # SLURM campaigns, chronologically numbered
+  01_geometry/ ... 09_rcfwd_rescale/   # runner .py + .sub files + story README per campaign
   sync_to_cluster.sh           # rsync project to the cluster (identity from cluster/cluster.env)
+  pull_results.sh              # fetch result JSONs + logs by label glob
   WORKFLOW.md                  # Daily cluster workflow
-  run_diagnostic.py            # Phase-1 diagnostic runner (7 hypothesis tests)
-  run_phase2.py                # Phase-2 longer runs
-  run_supervised_sweep.py      # FC tuning sweep (per-arch HP tuning)
-  run_supervised_grid.py
-  run_geometry_benchmark.py
-  *.sub                        # SLURM submission scripts
 
 reports/
-  results/*.json               # Run histories (per-epoch metrics)
-  figures/*.png                # Generated plots
-  diagnostic_phase1_report.html
-  sweep_results_table.{md,pdf}
-  meeting_walkthrough_2026_04_13.md
+  results/*.json               # Run histories (per-epoch metrics) + INDEX.md
+  figures/<campaign>/*.png     # Generated plots (local-only)
+
+docs/
+  RESEARCH_LOG.md              # master chronology
+  reports/                     # diagnostic phase reports, final_report.html, sweep table
+  milestones/                  # dated technical walkthroughs
 
 CONTEXT.md                     # Thesis research context + current findings
 INITIALIZERS.md                # Math reference for every registered initializer

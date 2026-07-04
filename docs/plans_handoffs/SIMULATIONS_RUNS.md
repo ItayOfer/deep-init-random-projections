@@ -85,11 +85,11 @@ This summary captures the current worktree differences against the repository, e
 
 ### New notebooks
 
-#### [notebooks/09_meeting_comparison.ipynb](/Users/itayofer/Thesis/Thesis/notebooks/09_meeting_comparison.ipynb)
+#### [notebooks/09_depth_geometry_comparison_original.ipynb](/Users/itayofer/Thesis/Thesis/notebooks/09_depth_geometry_comparison_original.ipynb)
 
 - Meeting-prep comparison notebook focused on product-balanced initializers.
 
-#### [notebooks/09_meeting_comparison_executed.ipynb](/Users/itayofer/Thesis/Thesis/notebooks/09_meeting_comparison_executed.ipynb)
+#### [notebooks/09_depth_geometry_comparison.ipynb](/Users/itayofer/Thesis/Thesis/notebooks/09_depth_geometry_comparison.ipynb)
 
 - Executed/output-preserved version of the meeting comparison notebook.
 
