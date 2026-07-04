@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Plain-SGD 100-layer FC baseline — replicates the advisor's recipe.
 
-Advisor's email reported the following 100-layer training succeeding where
+The advisor's email reported the following 100-layer training succeeding where
 ours failed:
 
   width=512, depth=100, batch_size=128, lr=1e-3,
