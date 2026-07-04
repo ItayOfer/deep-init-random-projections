@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --job-name=supervised_pb
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=24:00:00
+#SBATCH --output=%x-%j.out
+
+# CNN/FC + BatchNorm comparison with product-balanced and other candidate inits.
+#
+# Advisor's experiment grid:
+#   a. CNN + He + BatchNorm
+#   b. CNN + He + No BatchNorm
+#   c. FC  + He + BatchNorm
+#   d. FC  + He + No BatchNorm
+#   e. Both + Candidate inits + Both BN settings
+#
+# Candidate inits:
+#   - row_centered_product_balanced      (g_fwd * g_bwd = 1, uniform)
+#   - row_centered_forward_balanced      (g_fwd = 1, diagnostic)
+#   - orthogonal_he                      (practical best geometry, no trap)
+#
+# Architectures (VGG-style):
+#   FC:  input -> [512] x L -> 10
+#   CNN: 3x3 conv, channels 32->64->128->256, MaxPool between stages
+#
+# Datasets: Fashion-MNIST, CIFAR-10
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python cluster/02_he_tuning/run_supervised_grid.py \
+    --datasets fashion_mnist,cifar10 \
+    --architectures cnn,fc \
+    --depths 10,20,50 \
+    --init-strategies he,row_centered_product_balanced,row_centered_forward_balanced,orthogonal_he \
+    --batch-norm false,true \
+    --epochs 30 \
+    --batch-size 128 \
+    --eval-batch-size 256 \
+    --learning-rate 1e-3 \
+    --optimizer adam \
+    --fc-hidden-dim 512 \
+    --cnn-base-channels 32 \
+    --cnn-max-channels 256 \
+    --device cuda \
+    --normalize-inputs \
+    --output reports/results/supervised_product_balanced.json"

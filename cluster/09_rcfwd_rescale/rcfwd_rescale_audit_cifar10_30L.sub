@@ -1,0 +1,24 @@
+#!/bin/bash
+#SBATCH --job-name=rcfwd_rescale_audit_cifar10_30L
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=dgx01,dgx04
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=06:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/09_rcfwd_rescale/run_rcfwd_gradrescale.py \
+    --experiment rcfwd_rescale_audit_cifar10_30L \
+    --seed 42 \
+    --device cuda \
+    --output reports/results/rcfwd_rescale_audit_cifar10_30L.json"

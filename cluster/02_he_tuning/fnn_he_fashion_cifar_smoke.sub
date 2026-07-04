@@ -1,0 +1,38 @@
+#!/bin/bash
+#SBATCH --job-name=fnn_he_smoke
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=01:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/02_he_tuning/run_supervised_grid.py \
+    --datasets cifar10,fashion_mnist \
+    --architectures fc \
+    --depths 30,50,100 \
+    --init-strategies he \
+    --batch-norm false,true \
+    --fc-hidden-dim 500 \
+    --epochs 3 \
+    --min-epochs 1 \
+    --batch-size 64 \
+    --eval-batch-size 128 \
+    --learning-rate 1e-3 \
+    --optimizer adam \
+    --num-train-samples 512 \
+    --num-test-samples 256 \
+    --device cuda \
+    --normalize-inputs \
+    --target-metric eval_train_accuracy \
+    --log-every-epoch \
+    --output reports/results/fnn_he_bn_evaltrain_smoke.json"

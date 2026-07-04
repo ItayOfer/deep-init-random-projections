@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH --job-name=fnn_diag_p1
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=dgx01,dgx04
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=04:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/03_he_diagnostics/run_diagnostic.py \
+    --epochs 30 \
+    --diagnostics-every 5 \
+    --seed 42 \
+    --device cuda \
+    --checkpoint-dir reports/checkpoints/diagnostic_phase1 \
+    --checkpoint-every 10 \
+    --output reports/results/diagnostic_phase1.json"

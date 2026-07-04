@@ -1,0 +1,32 @@
+#!/bin/bash
+#SBATCH --job-name=supervised_compare
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=12:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python cluster/02_he_tuning/run_supervised_grid.py \
+    --datasets fashion_mnist,cifar10 \
+    --architectures cnn,fc \
+    --depths 50,100 \
+    --init-strategies he,row_centered_he \
+    --batch-norm false,true \
+    --epochs 20 \
+    --batch-size 128 \
+    --eval-batch-size 256 \
+    --learning-rate 1e-3 \
+    --optimizer adam \
+    --device cuda \
+    --normalize-inputs \
+    --output reports/results/supervised_comparison.json"

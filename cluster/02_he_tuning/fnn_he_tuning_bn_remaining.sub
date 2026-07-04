@@ -1,0 +1,45 @@
+#!/bin/bash
+#SBATCH --job-name=fnn_he_bn_rem
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=dgx01,dgx04
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=24:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/02_he_tuning/run_supervised_sweep.py \
+    --datasets cifar10,fashion_mnist \
+    --architectures fc \
+    --depths 100 \
+    --init-strategies he \
+    --batch-norm true \
+    --fc-hidden-dim 500 \
+    --epochs 60 \
+    --min-epochs 20 \
+    --eval-batch-size 256 \
+    --device cuda \
+    --normalize-inputs \
+    --target-train-accuracy 0.995 \
+    --target-patience 3 \
+    --target-metric eval_train_accuracy \
+    --bn-optimizers adam,sgd \
+    --bn-adam-lrs 1e-3,3e-3 \
+    --bn-sgd-lrs 3e-2,1e-1 \
+    --bn-schedulers cosine,onecycle \
+    --bn-weight-decays 0 \
+    --bn-batch-sizes 128,256 \
+    --bn-norm-momentums 0.1,0.05 \
+    --sgd-momentums 0.9 \
+    --output reports/results/fnn_he_tuning_bn_100L_sweep.json \
+    --best-output reports/results/fnn_he_tuning_bn_100L_best.json \
+    --resume"
