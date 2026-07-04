@@ -1,16 +1,23 @@
 __pycache__/
+*.egg-info/
 
-# Cluster and Slurm Artifacts
+# Datasets (large; re-downloadable via rp_study.data.loaders)
+data/
+notebooks/data/
+
+# Cluster and SLURM artifacts
 *.sqsh
 *.out
 *.err
+logs/
+reports/checkpoints/
 
-# macOS noise
-.DS_Store
+# Generated figures (PNG evidence stays local; result JSONs ARE committed)
+reports/figures/
 
 # Local-only scratch / working notes (not part of the shared codebase)
-context_for_tuning_session.md
-context_from_codex_working_on_last_simulation_runs.md
-email_to_advisor_draft.md
-prompt_for_tuning_session.md
-reports/diagnostic_phase1_report.backup.html
+docs/scratch/
+
+# Editor / OS noise
+.DS_Store
+.Rhistory
