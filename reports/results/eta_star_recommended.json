@@ -1,0 +1,8 @@
+{
+  "fashion_mnist_30L": 0.6,
+  "fashion_mnist_50L": 0.8,
+  "fashion_mnist_100L": 0.36,
+  "cifar10_30L": 0.85,
+  "cifar10_50L": 0.9,
+  "cifar10_100L": 0.36
+}

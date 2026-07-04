@@ -1,0 +1,254 @@
+[
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 30, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": false, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.1, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "cifar10", "epochs": 200, "min_epochs": 40,
+      "batch_size": 128, "eval_batch_size": 256,
+      "learning_rate": 0.01, "weight_decay": 0.0,
+      "optimizer": "sgd", "momentum": 0.9,
+      "scheduler": "onecycle", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 30, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": true, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.1, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "cifar10", "epochs": 200, "min_epochs": 40,
+      "batch_size": 256, "eval_batch_size": 256,
+      "learning_rate": 0.001, "weight_decay": 0.0,
+      "optimizer": "adam", "momentum": 0.9,
+      "scheduler": "onecycle", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 30, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": false, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.1, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "fashion_mnist", "epochs": 200, "min_epochs": 40,
+      "batch_size": 128, "eval_batch_size": 256,
+      "learning_rate": 0.01, "weight_decay": 0.0,
+      "optimizer": "sgd", "momentum": 0.9,
+      "scheduler": "onecycle", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 30, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": true, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.1, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "fashion_mnist", "epochs": 200, "min_epochs": 40,
+      "batch_size": 256, "eval_batch_size": 256,
+      "learning_rate": 0.001, "weight_decay": 0.0,
+      "optimizer": "adam", "momentum": 0.9,
+      "scheduler": "cosine", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 50, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": false, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.1, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "cifar10", "epochs": 200, "min_epochs": 40,
+      "batch_size": 128, "eval_batch_size": 256,
+      "learning_rate": 0.01, "weight_decay": 0.0,
+      "optimizer": "sgd", "momentum": 0.9,
+      "scheduler": "onecycle", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 50, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": true, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.05, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "cifar10", "epochs": 200, "min_epochs": 40,
+      "batch_size": 256, "eval_batch_size": 256,
+      "learning_rate": 0.001, "weight_decay": 0.0,
+      "optimizer": "adam", "momentum": 0.9,
+      "scheduler": "cosine", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 50, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": false, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.1, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "fashion_mnist", "epochs": 200, "min_epochs": 40,
+      "batch_size": 128, "eval_batch_size": 256,
+      "learning_rate": 0.01, "weight_decay": 0.0,
+      "optimizer": "sgd", "momentum": 0.9,
+      "scheduler": "onecycle", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 50, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": true, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.05, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "fashion_mnist", "epochs": 200, "min_epochs": 40,
+      "batch_size": 256, "eval_batch_size": 256,
+      "learning_rate": 0.001, "weight_decay": 0.0,
+      "optimizer": "adam", "momentum": 0.9,
+      "scheduler": "onecycle", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 100, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": false, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.1, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "cifar10", "epochs": 200, "min_epochs": 40,
+      "batch_size": 128, "eval_batch_size": 256,
+      "learning_rate": 0.001, "weight_decay": 0.0,
+      "optimizer": "adam", "momentum": 0.9,
+      "scheduler": "cosine", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 100, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": true, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.05, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "cifar10", "epochs": 200, "min_epochs": 40,
+      "batch_size": 256, "eval_batch_size": 256,
+      "learning_rate": 0.001, "weight_decay": 0.0,
+      "optimizer": "adam", "momentum": 0.9,
+      "scheduler": "cosine", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 100, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": false, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.1, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "fashion_mnist", "epochs": 200, "min_epochs": 40,
+      "batch_size": 128, "eval_batch_size": 256,
+      "learning_rate": 0.001, "weight_decay": 0.0,
+      "optimizer": "adam", "momentum": 0.9,
+      "scheduler": "cosine", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  },
+  {
+    "classifier_config": {
+      "architecture": "fc", "depth": 100, "init_strategy": "he", "init_kwargs": {},
+      "use_batch_norm": true, "use_bias": true, "num_classes": 10,
+      "fc_input_dim": 784, "fc_hidden_dim": 500,
+      "cnn_input_channels": 1, "cnn_base_channels": 32, "cnn_max_channels": 256,
+      "bn_momentum": 0.05, "bn_eps": 1e-5
+    },
+    "training_config": {
+      "dataset": "fashion_mnist", "epochs": 200, "min_epochs": 40,
+      "batch_size": 256, "eval_batch_size": 256,
+      "learning_rate": 0.001, "weight_decay": 0.0,
+      "optimizer": "adam", "momentum": 0.9,
+      "scheduler": "onecycle", "step_size": 10, "gamma": 0.1,
+      "onecycle_pct_start": 0.3, "onecycle_div_factor": 25.0, "onecycle_final_div_factor": 10000.0,
+      "num_train_samples": null, "num_test_samples": null,
+      "normalize_inputs": true, "num_workers": 0, "label_smoothing": 0.0,
+      "target_train_accuracy": 0.995, "target_patience": 5,
+      "target_metric": "eval_train_accuracy", "log_every_epoch": true
+    }
+  }
+]
