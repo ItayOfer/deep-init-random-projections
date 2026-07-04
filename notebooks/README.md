@@ -1,171 +1,43 @@
 # Experiment Notebooks
 
-This folder contains Jupyter notebooks for running experiments. Each notebook is self-contained and designed to be easy to use.
+Analysis and reporting notebooks. Numbered in the order they entered the research (see `docs/RESEARCH_LOG.md` for the narrative). Imports come from `src/rp_study` — no local re-implementations. Configuration parameters live at the top of each notebook.
 
-## Prerequisites
+## Index
 
-Make sure you have installed the required dependencies:
+| # | Notebook | Purpose | Reads |
+|---|---|---|---|
+| 01 | `01_shape_experiments.ipynb` | Multi-layer RP + ReLU on 2D geometric shapes; PCA vs RP | — (synthetic) |
+| 02 | `02_mnist_projections.ipynb` | RP geometry on MNIST/Fashion-MNIST; initializer comparison via `multi_layer_rp_with_init()`; Johnson-Lindenstrauss | datasets |
+| 03 | `03_gradient_analysis.ipynb` | Gradient flow across init strategies; dead-neuron / zero-gradient stats; variance sweeps | datasets |
+| 04 | `04_kernel_analysis.ipynb` | The arc-cosine kernel K(α): theory, angle preservation, multi-layer composition | — (theory) |
+| 05 | `05_initializer_dashboard.ipynb` | **One-stop-shop**: geometry + gradient + summary stats for every registry initializer. Add new initializers here first. | datasets |
+| 06 | `06_gradient_diagnostics.ipynb` | Forward–backward gain asymmetry of row centering — the root cause of the gradient trap | datasets |
+| 07 | `07_kernel_geometry_analysis.ipynb` | Kernel + geometry: deriving geometry-preserving initialization from theory | `geometry_*.json` |
+| 08 | `08_results_dashboard.ipynb` | Reporting only — aggregates audit JSONs into scoreboards | `reports/results/*.json` |
+| 09 | `09_meeting_comparison_executed.ipynb` | He vs row-centered variants vs V2 at multiple depths, incl. the k-NN geometry revision ("spread ≠ structure") | `geometry_product_balanced.json` |
+| 10 | `10_fnn_training_curves.ipynb` | Epoch-by-epoch He training trajectories from the tuning sweep | `fnn_he_bn_training.json` |
+| 11 | `11_eta_sweep_analysis.ipynb` | V2 layer-balanced η sweep; per-architecture η\* selection | `eta_sweep_research.json`, `eta_star_recommended.json` |
+| 13 | `13_final_results.ipynb` | **The latest audit narrative** (May 30): all 12 architectures, He + recovery + V2 rounds, 17 sections | `final_audit_merged.json` + recovery/V2 JSONs |
+
+### archive/
+
+Superseded versions kept for the record:
+
+- `Random_Projections.ipynb` — the original Jan exploration that seeded the project (pre-`rp_study` package).
+- `09_meeting_comparison.ipynb` — un-executed original; `09_meeting_comparison_executed.ipynb` (May 22) is canonical.
+- `13_final_results_executed.ipynb` — May 22 snapshot; `13_final_results.ipynb` (May 30) is canonical.
+
+## Running
 
 ```bash
-pip install torch torchvision matplotlib scikit-learn numpy jupyter
+pip install -r ../requirements.txt
+jupyter lab    # from this directory
 ```
 
-## Notebooks
+Notebooks auto-detect GPU where relevant (02, 03). All set seeds for reproducibility; seeds are reset between strategies when comparing initializers. For deep networks (100+ layers) reduce `NUM_SAMPLES` if memory-bound.
 
-### 01_shape_experiments.ipynb
+## Adding a new initializer
 
-**Purpose**: Explore how random projections with ReLU affect 2D geometric shapes.
-
-**Experiments**:
-- Compare PCA vs Random Projections on shapes (circle, ellipse, square, rectangle)
-- Multi-layer RP + ReLU transformations (1, 2, 3, 5, 10, 20 layers)
-- Effect of shape position (negative vs positive coordinates)
-- Tilted shapes experiment
-
-**Key Parameters** (modify in the Configuration cell):
-```python
-N_POINTS = 200           # Points per shape
-LAYER_COUNTS = [1, 2, 3, 5, 10, 20]  # Layers to test
-```
-
----
-
-### 02_mnist_projections.ipynb
-
-**Purpose**: Study random projections on MNIST/Fashion-MNIST image data.
-
-**Experiments**:
-- PCA vs Random Projection comparison
-- Rectangle vs Square projection matrices
-- Multi-layer RP + ReLU transformations
-- **Initialization comparison** (Section 4b): Uses all registry initializers via `multi_layer_rp_with_init()`
-- Johnson-Lindenstrauss comparison
-- GPU-accelerated multi-layer projections
-
-**Key Parameters**:
-```python
-DATASET = "fashion_mnist"  # or "mnist"
-TARGET_DIM = 2
-LAYER_COUNTS = [1, 5, 10, 20]
-```
-
-**Note**: Initialization strategies are imported from the registry. See `INITIALIZERS.md` for the full list.
-
----
-
-### 03_gradient_analysis.ipynb
-
-**Purpose**: Analyze gradient flow in neural networks with different initializations.
-
-**Experiments**:
-- Single architecture gradient analysis
-- Comparison across initialization strategies
-- Deep network (100+ layers) analysis
-- Zero gradient and dead neuron statistics
-- Custom variance experiments (2/d, 2.5/d, 3/d, 4/d)
-
-**Key Parameters**:
-```python
-SEED = 42
-DATASET = "fashion_mnist"
-NUM_SAMPLES = 1000
-LAYER_SIZES = [784, 784, 512, 256, 1]
-INIT_STRATEGY = "he"
-```
-
-**Outputs**:
-- Gradient entry histograms per layer
-- Row norm histograms
-- Activation histograms
-- Zero gradient statistics
-- Mean row norm per layer plots
-
----
-
-### 05_initializer_dashboard.ipynb
-
-**Purpose**: Unified one-stop-shop for evaluating initialization strategies. Configure once, get geometry + gradient + statistics analysis in one run.
-
-**Sections**:
-1. **Geometry**: PCA projections after multi-layer RP + ReLU (grid: initializers x layer counts)
-2. **Gradient Flow**: Mean row norms, zero proportions across layers
-3. **Summary Statistics**: Table with gradient zeros, activation zeros, dead neurons, gain estimates
-
-**Key Parameters** (all in one configuration cell):
-```python
-INIT_STRATEGIES = ["he", "row_centered_he", ...]  # From registry
-GEOM_LAYER_COUNTS = [1, 5, 10, 20]
-GRAD_N_HIDDEN = 50
-GRAD_WIDTH = 784
-DATASET = "fashion_mnist"
-```
-
-**Workflow for new initializers**:
-1. Register in `src/rp_study/models/initializers.py`
-2. Add to `INIT_STRATEGIES` list in this notebook
-3. Run all cells
-
----
-
-### 04_kernel_analysis.ipynb
-
-**Purpose**: Explore the theoretical K(α) arc-cosine kernel function.
-
-**Topics**:
-- K(α) kernel visualization
-- Input-output angle relationship
-- Inner product transformation under ReLU
-- Angle preservation analysis
-- Multi-layer kernel composition
-
-**The K(α) Kernel**:
-```
-K(α) = (sin(α) + (π - α)cos(α)) / (2π)
-```
-
-This kernel describes the expected inner product between two vectors after applying a random projection followed by ReLU activation.
-
----
-
-## Running the Notebooks
-
-### Option 1: Jupyter Notebook
-```bash
-cd notebooks
-jupyter notebook
-```
-
-### Option 2: JupyterLab
-```bash
-cd notebooks
-jupyter lab
-```
-
-### Option 3: VS Code
-Open any `.ipynb` file in VS Code with the Jupyter extension installed.
-
-### Option 4: Google Colab
-Upload the notebook to Google Colab. Add this cell at the top to install dependencies:
-```python
-!pip install torch torchvision matplotlib scikit-learn
-
-# If running from Colab, clone the repo first:
-!git clone https://github.com/itayofer/thesis.git
-import sys
-sys.path.insert(0, 'thesis/src')
-```
-
-## Tips
-
-1. **Modify configurations at the top**: Each notebook has a "Configuration" section where you can adjust parameters before running.
-
-2. **Run cells in order**: The notebooks are designed to be run from top to bottom.
-
-3. **GPU acceleration**: Notebooks 02 and 03 support GPU acceleration. The device is auto-detected.
-
-4. **Memory considerations**: For deep networks (100+ layers) or large sample sizes, consider:
-   - Reducing `NUM_SAMPLES`
-   - Using a GPU
-   - Running fewer layer configurations
-
-5. **Reproducibility**: All notebooks set random seeds for reproducible results.
+1. Register it in `src/rp_study/models/initializers.py` (`@register_initializer("name")`).
+2. Document it in `INITIALIZERS.md`.
+3. Add to `INIT_STRATEGIES` in `05_initializer_dashboard.ipynb` and run all cells.
