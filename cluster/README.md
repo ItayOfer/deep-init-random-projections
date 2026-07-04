@@ -1,6 +1,6 @@
 # Cluster scripts (DLC / SLURM)
 
-Daily workflow lives in `WORKFLOW.md`. Campaigns are organized in **chronologically numbered subdirectories** — each holds its Python runner(s) plus the SLURM `.sub` files that submit them. The numbering follows the research timeline (see `docs/RESEARCH_LOG.md` for the full narrative).
+Daily workflow lives in `WORKFLOW.md`. Campaigns are organized in **chronologically numbered subdirectories** — each holds its Python runner(s) plus the SLURM `.sub` files that submit them, and **each has its own README telling that campaign's story**: question, findings with verified numbers, how to reproduce, and known gaps. The numbering follows the research timeline (see `docs/RESEARCH_LOG.md` for the full narrative).
 
 ## Layout convention
 
@@ -13,15 +13,15 @@ Daily workflow lives in `WORKFLOW.md`. Campaigns are organized in **chronologica
 
 | # | Directory | Dates | Question | Outcome |
 |---|---|---|---|---|
-| 01 | `01_geometry/` | Apr 3 | Geometry (arc-cosine kernel) + angle-map benchmarks: He vs orthogonal vs row-centered variants | `geometry_*.json`, `angle_*.json` |
-| 02 | `02_he_tuning/` | Apr 11 – May 3 | Initial 12-architecture He grid sweep with per-arch HP tuning | **5/12 PASS** |
-| 03 | `03_he_diagnostics/` | May 14–16 | Hypothesis-driven diagnostic phases 1–5 (LR schedules, BN momentum, gradient death) | Recipes for the audit (note: phase 4 produced no JSON) |
-| 04 | `04_he_final_audit/` | May 16–18 | The unified audit: all 12 architectures, best-known recipes, 200 epochs | **8/12 PASS** (`final_audit_merged.json`) |
-| 05 | `05_sgd_recovery/` | May 22–23 | Plain-SGD replication + recovery rounds 1–3 for the four failing 100L architectures | **10/12 PASS**; both 100L/BN remain open |
-| 06 | `06_v2_row_centered/` | May 22–24 | V2 (`row_centered_layer_balanced_product_base`, η=0.5) smoke + audit rounds 1–4 | **5/12 PASS** (all 30L + fmnist/50L/BN under SGD); depth ceiling ≈ L=30 |
-| 07 | `07_v2_eta_nobn/` | May 25 | V2 NoBN with per-architecture η\* (gradient-ratio minimizing) + lr1e-6 probes | Confirmed V2 depth ceiling; no η rescues L=100 |
-| 08 | `08_he_lowlr_probe/` | May 25 | He + plain SGD at ultra-low LR on 100L/BN (mechanism probe) | Survives numerically, frozen at chance |
-| 09 | `09_rcfwd_rescale/` | May 25 | rcfwd: `row_centered_forward_balanced` init + per-layer backward gradient rescale (`grad_rescale=r`) | **PREPARED, NEVER LAUNCHED** — no results yet. This is the next campaign to run. |
+| 01 | [`01_geometry/`](01_geometry/README.md) | Apr 3 | Geometry (arc-cosine kernel) + angle-map benchmarks: He vs orthogonal vs row-centered variants | `geometry_*.json`, `angle_*.json` |
+| 02 | [`02_he_tuning/`](02_he_tuning/README.md) | Apr 11 – May 3 | Initial 12-architecture He grid sweep with per-arch HP tuning | **5/12 PASS** |
+| 03 | [`03_he_diagnostics/`](03_he_diagnostics/README.md) | May 14–16 | Hypothesis-driven diagnostic phases 1–5 (LR schedules, BN momentum, gradient death) | Recipes for the audit (note: phase 4 produced no JSON) |
+| 04 | [`04_he_final_audit/`](04_he_final_audit/README.md) | May 16–18 | The unified audit: all 12 architectures, best-known recipes, 200 epochs | **8/12 PASS** (`final_audit_merged.json`) |
+| 05 | [`05_sgd_recovery/`](05_sgd_recovery/README.md) | May 22–23 | Plain-SGD replication + recovery rounds 1–3 for the four failing 100L architectures | **10/12 PASS**; both 100L/BN remain open |
+| 06 | [`06_v2_row_centered/`](06_v2_row_centered/README.md) | May 22–24 | V2 (`row_centered_layer_balanced_product_base`, η=0.5) smoke + audit rounds 1–4 | **5/12 PASS** (all 30L + fmnist/50L/BN under SGD); depth ceiling ≈ L=30 |
+| 07 | [`07_v2_eta_nobn/`](07_v2_eta_nobn/README.md) | May 25 | V2 NoBN with per-architecture η\* (gradient-ratio minimizing) + lr1e-6 probes | Confirmed V2 depth ceiling; no η rescues L=100 |
+| 08 | [`08_he_lowlr_probe/`](08_he_lowlr_probe/README.md) | May 25 | He + plain SGD at ultra-low LR on 100L/BN (mechanism probe) | Survives numerically, frozen at chance |
+| 09 | [`09_rcfwd_rescale/`](09_rcfwd_rescale/README.md) | May 25 | rcfwd: `row_centered_forward_balanced` init + per-layer backward gradient rescale (`grad_rescale=r`) | Init-time validated; **smoke jobs launched 2026-07-04, results pending** |
 
 ### Campaign details
 
@@ -55,7 +55,7 @@ Daily workflow lives in `WORKFLOW.md`. Campaigns are organized in **chronologica
 
 **08_he_lowlr_probe** — `run_he_sgd_lowlr_smoke.py`, `run_he_sgd_lowlr2_smoke.py`; 4 subs on {cifar10,fmnist}×100L/BN.
 
-**09_rcfwd_rescale** — `run_rcfwd_gradrescale.py`; 12 subs ({smoke,audit} × {cifar10,fmnist} × {30,50,100}L, NoBN, plain SGD). Uses the `grad_rescale` config field + `_GradRescale` autograd op in `src/rp_study/models/classifiers.py`. Validated at initialization only (`reports/figures/rcfwd_rescale/`); **training runs never submitted**.
+**09_rcfwd_rescale** — `run_rcfwd_gradrescale.py`; 12 subs ({smoke,audit} × {cifar10,fmnist} × {30,50,100}L, NoBN, plain SGD). Uses the `grad_rescale` config field + `_GradRescale` autograd op in `src/rp_study/models/classifiers.py`. Validated at initialization (`reports/figures/rcfwd_rescale/`, curated copies in `docs/figures/`); smoke jobs first submitted 2026-07-04.
 
 ## Infrastructure (this directory's root)
 

@@ -1,136 +1,58 @@
-# rp_study Package
+# rp_study — the thesis Python package
 
-Core Python package for random projections research.
+Everything the experiments run on. The cluster campaigns (`cluster/01..09`), the notebooks, and the `scripts/` helpers all import from here; nothing re-implements what this package provides. Design rule: **code corresponds one-to-one with the math** — every initializer's docstring states its formula and known properties (full derivations: `INITIALIZERS.md`).
 
-## Module Overview
+## Role in the research
 
-### config.py
-Configuration dataclasses for experiments.
+| Module | What it contributes to the story |
+|---|---|
+| `models/initializers.py` | **The single source of truth**: 19 strategies behind `@register_initializer("name")` — `he`, the row-centered family (`row_centered_he`, `_var_adj`, `partial_centered_he`), the theory-derived fixes (`row_centered_product_balanced` = V1, `row_centered_layer_balanced_product_base` = V2, `row_centered_forward_balanced` = rcfwd's init), `orthogonal_he`, `kernel_preserving`, … |
+| `models/classifiers.py` | `DeepFCClassifier` (+CNN) used by every training campaign — including `_GradRescale`, the custom autograd op (identity forward, gradient × r backward) behind campaign 09; enabled via `ClassifierConfig.grad_rescale`. |
+| `experiments/supervised_training.py` | `run_supervised_experiment()` — the training loop every audit runs: schedulers (`none/cosine/step/onecycle/plateau`), LR warmup, per-layer gradient diagnostics (`diagnostics_every`, `log_grad_per_layer`), BN stats logging, abort-on-explosion, checkpoints/resume. Its `EpochMetrics` history is the JSON schema of everything in `reports/results/`. |
+| `experiments/gradient_analysis.py` | `GradientExperiment`, `compare_initializations()` — the gradient-flow measurements behind the forward/backward gain asymmetry finding. |
+| `experiments/geometry_benchmark.py` + `analysis/` | k-NN / distance-correlation / effective-dim geometry metrics (campaign 01), the arc-cosine kernel `K(α)` (`analysis/kernel.py`), and the empirical angle map (`analysis/angle_map.py`). |
+| `projections/random_projections.py` | `multi_layer_rp_with_init(X, n_layers, init_strategy)` — the numpy bridge that applies multi-layer RP+ReLU with any registry initializer (geometry notebooks). |
+| `data/loaders.py` | MNIST / Fashion-MNIST / CIFAR-10 (auto-download to `data/`); `data/shapes.py` for synthetic 2-D geometry. |
+| `config.py` | The dataclasses every entry point shares: `ExperimentConfig` (seed/device), `ClassifierConfig` (arch/depth/init/BN/`grad_rescale`), `TrainingConfig` (optimizer/LR/scheduler/warmup/targets). |
+| `visualization/` | `gradient_plots`, `training_plots`, `projection_plots`. |
+
+## Key idioms
 
 ```python
-from rp_study.config import ExperimentConfig, NetworkConfig, GradientExperimentConfig
+# Train one architecture the way the audits do
+from rp_study.config import ExperimentConfig, ClassifierConfig, TrainingConfig
+from rp_study.experiments.supervised_training import run_supervised_experiment
 
-exp_config = ExperimentConfig(seed=42, device="auto")
-net_config = NetworkConfig(layer_sizes=[784, 512, 1], init_strategy="he")
-grad_config = GradientExperimentConfig(num_samples=1000, dataset="fashion_mnist")
-```
+exp = ExperimentConfig(seed=42)
+clf = ClassifierConfig(architecture="fc", depth=30, init_strategy="row_centered_layer_balanced_product_base",
+                       init_kwargs={"eta": 0.5}, use_batch_norm=True, fc_hidden_dim=500)
+train = TrainingConfig(num_epochs=200, optimizer="sgd", learning_rate=1e-2, scheduler="plateau",
+                       target_train_accuracy=0.995, target_metric="eval_train_accuracy")
+result = run_supervised_experiment(exp, clf, train)
 
-### data/
-Data loading utilities.
+# rcfwd: cancel the backward gain outside the weights
+clf = ClassifierConfig(architecture="fc", depth=100, init_strategy="row_centered_forward_balanced",
+                       grad_rescale=0.8256, use_batch_norm=False)
 
-**loaders.py**: MNIST and Fashion-MNIST loaders
-```python
-from rp_study.data import load_mnist, load_fashion_mnist, get_data_loader
+# Geometry: multi-layer RP + ReLU with any registry initializer
+from rp_study.projections import multi_layer_rp_with_init
+X20 = multi_layer_rp_with_init(X, n_layers=20, init_strategy="row_centered_he")
 
-X, y = load_fashion_mnist(num_samples=1000, as_numpy=True)
-```
+# Register a new initializer (then document in INITIALIZERS.md + add to notebook 05)
+from rp_study.models.initializers import register_initializer
 
-**shapes.py**: Synthetic 2D shape generators
-```python
-from rp_study.data import generate_circle, generate_ellipse, generate_square
-from rp_study.data.shapes import generate_standard_shapes
-
-shapes = generate_standard_shapes(n_points=200)
-```
-
-### models/
-Neural network models and initialization.
-
-**initializers.py**: Extensible initialization registry
-```python
-from rp_study.models import list_initializers, register_initializer
-
-print(list_initializers())  # ['he', 'row_centered_he', 'custom_variance', ...]
-
-# Add custom initializer
 @register_initializer("my_init")
 def my_init(layer, **kwargs):
-    ...
-```
-
-**networks.py**: FeedForward network class
-```python
-from rp_study.models import FeedForward, create_deep_network
-
-net = FeedForward([784, 512, 256, 1], init_strategy="he")
-deep_net = create_deep_network(num_hidden_layers=100, hidden_widths="random")
-```
-
-### projections/
-Random projection utilities.
-
-```python
-from rp_study.projections import random_projection_matrix, multi_layer_projection, multi_layer_rp_with_init
-
-R = random_projection_matrix(784, 2, variance="he")
-X_proj = multi_layer_projection(X, num_layers=10, mode="square")
-
-# Use any registry initializer for multi-layer RP + ReLU
-X_proj = multi_layer_rp_with_init(X, n_layers=10, init_strategy="row_centered_he")
-```
-
-### experiments/
-Experiment frameworks.
-
-**gradient_analysis.py**: Gradient flow analysis
-```python
-from rp_study.experiments import GradientExperiment, compare_initializations
-
-experiment = GradientExperiment(exp_config, net_config, grad_config)
-results = experiment.run()
-
-# Or compare multiple initializations
-results = compare_initializations(
-    layer_sizes=[784, 512, 1],
-    init_strategies=["he", "row_centered_he"]
-)
-```
-
-### analysis/
-Theoretical analysis functions.
-
-**kernel.py**: K(α) arc-cosine kernel
-```python
-from rp_study.analysis import k_alpha, compute_output_angle, plot_k_alpha
-
-k_values = k_alpha(np.linspace(0, np.pi, 100))
-```
-
-### visualization/
-Plotting utilities.
-
-```python
-from rp_study.visualization import gradient_plots, projection_plots
-
-# Gradient analysis plots
-gradient_plots.plot_gradient_histograms(results)
-gradient_plots.plot_zero_gradient_stats(results)
-
-# Projection plots
-projection_plots.plot_pca_vs_rp(X, X_pca, X_rp, labels=y)
-```
-
-## Adding New Initialization Strategies
-
-The initializer system uses a registry pattern for easy extension:
-
-```python
-from rp_study.models.initializers import register_initializer
-import torch.nn as nn
-import math
-
-@register_initializer("lecun")
-def lecun_init(layer: nn.Linear, **kwargs):
-    """LeCun initialization for SELU networks."""
-    fan_in = layer.weight.shape[1]
-    std = math.sqrt(1.0 / fan_in)
     with torch.no_grad():
-        layer.weight.normal_(0.0, std)
+        layer.weight.normal_(0.0, 0.01)
         if layer.bias is not None:
             layer.bias.zero_()
 ```
 
-After registering, use it like any other strategy:
-```python
-net = FeedForward([784, 512, 1], init_strategy="lecun")
-```
+## Conventions that matter for correctness
+
+- `nn.Linear` weight is `(fan_out, fan_in)`; **row centering subtracts the mean along `dim=1`** (each output neuron's incoming weights sum to zero). Row centering shrinks variance by `(1 − 1/d)` — decide explicitly whether to re-adjust.
+- All initializers zero the bias (or handle `bias=None`).
+- Reset the seed between strategies when comparing initializers.
+- The thesis pass criterion is computed on the **full train set in `model.eval()` mode**: `eval_train_accuracy ≥ 0.995` and `eval_train_loss ≤ 0.10`.
+- No gradient clipping in V2/rcfwd experiments — instability is information; fix it via LR/warmup/optimizer.
