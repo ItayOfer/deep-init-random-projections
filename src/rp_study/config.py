@@ -75,6 +75,12 @@ class ClassifierConfig:
     cnn_max_channels: int = 256
     bn_momentum: float = 0.1
     bn_eps: float = 1e-5
+    # Per-layer BACKWARD gradient rescale (FC only). If set, a GradRescale op
+    # (identity forward, multiply gradient by this factor in backward) is
+    # inserted after each hidden ReLU. Used to cancel the row-centered
+    # forward-balanced backward amplification g_bwd = 1/r with r = sqrt((pi-1)/pi)
+    # ~ 0.826. None disables it (standard backprop).
+    grad_rescale: Optional[float] = None
 
 
 @dataclass
@@ -119,6 +125,10 @@ class TrainingConfig:
     # during epoch 1 only. Useful for diagnosing initialization-induced
     # explosion/vanishing in the very first training step.
     log_per_batch_first_epoch: bool = False
+    # If True, prints the FULL per-layer gradient L2 norm vector (one value per
+    # hidden layer) every diagnostic epoch, instead of only the [min, max]
+    # range. Use with diagnostics_every=1 to log every layer every epoch.
+    log_grad_per_layer: bool = False
     num_train_samples: Optional[int] = None
     num_test_samples: Optional[int] = None
     normalize_inputs: bool = True

@@ -6,8 +6,30 @@ from typing import List, Tuple
 import torch
 import torch.nn as nn
 
+from typing import Optional
+
 from ..config import ClassifierConfig
 from .initializers import initialize_layer
+
+
+class _GradRescale(torch.autograd.Function):
+    """Identity in the forward pass; multiply the gradient by `r` in backward.
+
+    Inserted after each hidden ReLU, this scales ONLY the backward pass (the
+    forward is untouched). Used to cancel the row-centered forward-balanced
+    per-layer backward gain g_bwd = 1/r with a per-layer factor r, so the
+    cumulative backward amplification (1/r)^depth becomes ~1. Equivalent to a
+    geometric per-layer learning rate r^(L-l).
+    """
+
+    @staticmethod
+    def forward(ctx, x, r):
+        ctx.r = r
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        return grad_out * ctx.r, None
 
 
 class DeepFCClassifier(nn.Module):
@@ -24,6 +46,7 @@ class DeepFCClassifier(nn.Module):
         use_bias: bool = True,
         bn_momentum: float = 0.1,
         bn_eps: float = 1e-5,
+        grad_rescale: Optional[float] = None,
         **init_kwargs,
     ) -> None:
         super().__init__()
@@ -35,6 +58,7 @@ class DeepFCClassifier(nn.Module):
         self.depth = depth
         self.num_classes = num_classes
         self.use_batch_norm = use_batch_norm
+        self.grad_rescale = grad_rescale
 
         self.hidden_layers = nn.ModuleList()
         self.hidden_norms = nn.ModuleList()
@@ -75,6 +99,8 @@ class DeepFCClassifier(nn.Module):
             if self.use_batch_norm:
                 x = self.hidden_norms[idx](x)
             x = torch.relu(x)
+            if self.grad_rescale is not None:
+                x = _GradRescale.apply(x, self.grad_rescale)
         return self.classifier(x)
 
 
@@ -217,6 +243,7 @@ def build_classifier(config: ClassifierConfig) -> nn.Module:
             use_bias=config.use_bias,
             bn_momentum=config.bn_momentum,
             bn_eps=config.bn_eps,
+            grad_rescale=config.grad_rescale,
             **kwargs,
         )
     if config.architecture == "cnn":

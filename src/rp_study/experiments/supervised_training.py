@@ -477,6 +477,10 @@ def run_supervised_experiment(
                     f" grad_norm_range=[{min(grad_norms):.2e},{max(grad_norms):.2e}]"
                 )
             print("".join(log_parts), flush=True)
+            if is_diag_epoch and grad_norms and training_config.log_grad_per_layer:
+                per_layer = ",".join(f"{g:.3e}" for g in grad_norms)
+                print(f"[{run_name}] epoch={epoch:03d} grad_norm_per_layer=[{per_layer}]",
+                      flush=True)
 
         if (
             training_config.checkpoint_dir
