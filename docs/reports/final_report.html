@@ -347,7 +347,7 @@ Working directory: <code>/Users/itayofer/Thesis/Thesis</code> · Audit data: <co
 <p><b>Final-audit recipe (Adam lr=1e-3, cosine):</b> dead — eval_train_acc=0.1000, loss=2.3026.<br>
 <b>Recovery recipe (plain SGD):</b> SGD lr=1e-3, momentum=0, plateau(p=10, f=0.5), bs=128, depth=100, width=500, He init. Early-stopped at epoch 152.<br>
 <b>Recovery final:</b> eval_train_acc=<b>0.9953</b>, loss=<b>0.0157</b>, test_acc=0.8633.<br>
-<b>Path:</b> audit Adam-cosine → dead (gradient death)<span class="step-arrow">→</span>advisor-replication run on the same architecture using plain SGD lr=1e-3, momentum=0 → matched advisor's numbers (ep 5 train acc 0.731 vs his 0.754)<span class="step-arrow">→</span>recovery1 (plain SGD + plateau, 200 ep) → <b>PASS</b> at ep 152.<br>
+<b>Path:</b> audit Adam-cosine → dead (gradient death)<span class="step-arrow">→</span>advisor-replication run on the same architecture using plain SGD lr=1e-3, momentum=0 → matched advisor's numbers (ep 5 train acc 0.731 vs their 0.754)<span class="step-arrow">→</span>recovery1 (plain SGD + plateau, 200 ep) → <b>PASS</b> at ep 152.<br>
 <b>Mechanism:</b> Adam's second-moment estimate <code>v</code> underflows to ~0 in float32 when gradients are very small (which they are at depth 100 with He init), so the update becomes <code>lr · m̂ / √(0 + ε) ≈ 10 · m̂</code> — a large noisy update that destabilizes the forward pass within the first epoch. Plain SGD multiplies by <code>lr</code> and stays gentle, so the forward signal survives and the network learns normally. Gradient profile in the recovery run was healthy throughout (0.1–12 across the 100 layers). See <b>Section 7</b> for the full diagnosis.</p>
 </details>
 
@@ -425,7 +425,7 @@ ep 200:                            grad_norm_range = [1.22e-02, 4.15e+02]
 <p>The runner <code>cluster/run_plain_sgd_100L.py</code> applies the exact recipe to three datasets — one matches the advisor's setup (FMNIST), one is a sanity-check (MNIST, same input dimension, easier), and one tests dataset generalization (CIFAR-10, different input dimension).</p>
 
 <table>
-<thead><tr><th>Epoch</th><th>Prof TrLoss</th><th>Prof TrAcc</th><th>Prof TestAcc</th><th>Our FMNIST TrLoss</th><th>Our FMNIST TrAcc</th><th>Our FMNIST TestAcc</th></tr></thead>
+<thead><tr><th>Epoch</th><th>Advisor TrLoss</th><th>Advisor TrAcc</th><th>Advisor TestAcc</th><th>Our FMNIST TrLoss</th><th>Our FMNIST TrAcc</th><th>Our FMNIST TestAcc</th></tr></thead>
 <tbody>
 <tr><td>1</td><td class="mono">1.8008</td><td class="mono">25.58%</td><td class="mono">33.89%</td><td class="mono"><b>1.9027</b></td><td class="mono"><b>24.22%</b></td><td class="mono"><b>29.64%</b></td></tr>
 <tr><td>5</td><td class="mono">0.6743</td><td class="mono">75.40%</td><td class="mono">77.40%</td><td class="mono"><b>0.6972</b></td><td class="mono"><b>73.08%</b></td><td class="mono"><b>73.87%</b></td></tr>
