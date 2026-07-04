@@ -21,3 +21,13 @@ docs/scratch/
 # Editor / OS noise
 .DS_Store
 .Rhistory
+
+# LaTeX build artifacts
+*.aux
+*.toc
+*.bbl
+*.blg
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+thesis/**/*.log
