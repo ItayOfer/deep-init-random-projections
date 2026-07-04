@@ -98,3 +98,11 @@ Pass criterion: `eval_train_accuracy ≥ 0.995` **and** `eval_train_loss ≤ 0.1
 ## Requirements
 
 Python ≥ 3.8, PyTorch ≥ 1.9, NumPy, Matplotlib, scikit-learn (see `requirements.txt`).
+
+## Reproducing cluster experiments
+
+Copy `cluster/cluster.env.example` to `cluster/cluster.env`, fill in your SLURM cluster's user/host, then follow `cluster/WORKFLOW.md` (sync → `sbatch` → `pull_results.sh`). All seeds are fixed; every reported number traces to a JSON in `reports/results/`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
