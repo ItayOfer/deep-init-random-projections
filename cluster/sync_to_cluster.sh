@@ -21,8 +21,11 @@ rsync -avz --progress \
     --exclude='*.pyc' \
     --exclude='.ipynb_checkpoints' \
     --exclude='/data/' \
+    --exclude='notebooks/data/' \
     --exclude='*.sqsh' \
     --exclude='logs/' \
+    --exclude='docs/scratch/' \
+    --exclude='reports/figures/' \
     /Users/itayofer/Thesis/Thesis/ \
     "${REMOTE}:${REMOTE_DIR}/"
 

@@ -13,8 +13,10 @@ You are NOT a code monkey. You should understand *why* each initializer is desig
 
 ## Research Context
 
-See [CONTEXT.md](CONTEXT.md) for the full thesis setting, current findings, and next steps.
+See [CONTEXT.md](CONTEXT.md) for the thesis problem statement.
+See [docs/RESEARCH_LOG.md](docs/RESEARCH_LOG.md) for the chronological narrative and current state.
 See [INITIALIZERS.md](INITIALIZERS.md) for mathematical definitions of every initialization strategy.
+See [docs/plans_handoffs/](docs/plans_handoffs/) for the latest status handoff.
 
 ## Codebase Layout
 
@@ -24,7 +26,7 @@ src/rp_study/
   models/
     initializers.py          # Registry: @register_initializer("name") -- SINGLE SOURCE OF TRUTH
     networks.py              # FeedForward class (uses initialize_layer from registry)
-    classifiers.py           # FC/CNN classifiers for supervised training experiments
+    classifiers.py           # FC/CNN classifiers (incl. _GradRescale backward hook for rcfwd)
   data/loaders.py            # MNIST / Fashion-MNIST / CIFAR-10
   projections/
     random_projections.py    # RP matrices, multi_layer_rp_with_init() bridge
@@ -32,26 +34,32 @@ src/rp_study/
     gradient_analysis.py     # GradientExperiment, compare_initializations()
     supervised_training.py   # run_supervised_experiment() — full training loop, schedulers, diagnostics, checkpoints
   analysis/kernel.py         # K(alpha) arc-cosine kernel
-  visualization/
-    gradient_plots.py        # compare_initializations_plot(), plot_row_norm_per_layer()
-    projection_plots.py      # PCA scatter plots, multi-layer RP grids
+  visualization/             # gradient_plots, training_plots, projection_plots
 
-cluster/
+cluster/                     # SLURM campaigns, chronologically numbered — see cluster/README.md
+  01_geometry/ ... 09_rcfwd_rescale/   # each dir: runner .py + .sub files for one campaign
   sync_to_cluster.sh         # rsync the project to the-cluster (USE THIS — see workflow below)
-  run_diagnostic.py          # Phase 1 diagnostic runner (7 short hypothesis tests)
-  run_phase2.py              # Phase 2 longer runs (extends Phase 1 winners + plateau A/B test)
-  fnn_he_diagnostic_phase*.sub  # SLURM scripts for each phase
   WORKFLOW.md                # Daily-workflow notes for the cluster
 
-notebooks/
-  02_mnist_projections.ipynb # Geometry experiments (multi-layer RP + ReLU)
-  03_gradient_analysis.ipynb # Gradient flow analysis
-  05_initializer_dashboard.ipynb  # Unified one-stop-shop for new initializers
+scripts/                     # standalone figure/analysis helpers — see scripts/README.md
+
+notebooks/                   # analysis notebooks 01-13 — see notebooks/README.md
+  05_initializer_dashboard.ipynb  # unified one-stop-shop for new initializers
+  13_final_results.ipynb          # latest full audit narrative
 
 reports/
-  results/*.json             # Run histories (full EpochMetrics per epoch)
-  figures/*.png              # Generated matplotlib outputs
-  diagnostic_phase1_report.html  # Phase 1 findings + Phase 2 plan
+  results/*.json             # run histories (full EpochMetrics per epoch), COMMITTED + INDEX.md
+  figures/<campaign>/*.png   # generated matplotlib outputs (local only, gitignored)
+
+docs/
+  RESEARCH_LOG.md            # master chronology
+  milestones/                # date-stamped briefings (public-facing names)
+  reports/                   # diagnostic phase reports, final audit report
+  plans_handoffs/            # follow-up plans, status handoffs
+  scratch/                   # session working notes (gitignored)
+
+thesis/                      # LaTeX manuscript + supporting notes
+logs/slurm/<campaign>/       # SLURM .out logs (local only, gitignored)
 ```
 
 ## Key Conventions
@@ -62,6 +70,8 @@ reports/
 - **Configs**: Use dataclasses from `config.py`. Seeds must be reset between strategies for fair comparison.
 - **Notebooks**: Configuration parameters at the top. Imports from `src/rp_study`. No local re-implementations of things that exist in the package.
 - **Bias**: All initializers set bias to zero (or handle `bias=None`).
+- **No gradient clipping in V2/rcfwd experiments** — fix instability via LR/warmup/optimizer choice instead (runner `main()`s assert this).
+- **Public-facing repo**: file names must stay professional and neutral (date-stamped briefings, no personal references).
 
 ## When Adding a New Initializer
 
@@ -76,6 +86,7 @@ reports/
 - The kernel-preserving initializer is slow (~200 optimizer steps per layer). Warn before running with many layers.
 - When comparing initializers, always reset the seed before each strategy.
 - PCA on degenerate data (all points collapsed) produces a meaningless 2D scatter -- check norms before plotting.
+- Cluster runners live one directory below `cluster/`; they anchor the repo root via `Path(__file__).resolve().parents[2]` and put `cluster/03_he_diagnostics` on `sys.path` for the shared `_result_to_payload` / `print_diagnostic_summary` helpers. Keep both if you add a runner.
 
 ## Cluster Workflow
 
@@ -87,13 +98,13 @@ The cluster is `user@cluster` (DLC, SLURM-managed). Code lives at `~/thesis/` on
 ```bash
 bash cluster/sync_to_cluster.sh
 ```
-This rsyncs the project root to `~/thesis/` on the cluster, excluding `__pycache__`, `.git`, `data/`, `*.sqsh`, `logs/`. One password prompt covers everything.
+This rsyncs the project root to `~/thesis/` on the cluster, excluding `__pycache__`, `.git`, `data/`, `*.sqsh`, `logs/`, `docs/scratch/`. One password prompt covers everything.
 
 **2. Cluster terminal — clear stale bytecode and submit:**
 ```bash
 ssh user@cluster    # if not already in
-find ~/thesis/src -name "__pycache__" -exec rm -rf {} +
-cd ~/thesis && sbatch cluster/<job>.sub
+find ~/thesis/src ~/thesis/cluster -name "__pycache__" -exec rm -rf {} +
+cd ~/thesis && sbatch cluster/<NN>_<campaign>/<job>.sub
 squeue -u $CLUSTER_USER
 tail -f <jobname>-<JOBID>.out   # live log
 ```
@@ -101,8 +112,9 @@ Clearing `__pycache__` matters: stale `.pyc` files have caused `AttributeError` 
 
 **3. Local Mac terminal — pull results back when done:**
 ```bash
-scp "user@cluster:~/thesis/reports/results/<file>.json" reports/results/
-scp "user@cluster:~/thesis/<jobname>-*.out" .
+HOST=user@cluster
+scp "${HOST}:~/thesis/reports/results/<file>.json" reports/results/
+scp "${HOST}:~/thesis/<jobname>-*.out" logs/slurm/<NN>_<campaign>/
 ```
 Quote the remote glob — `*` must expand on the cluster, not in local zsh.
 
@@ -117,7 +129,8 @@ If a long command (especially `scp src/... user@.../target`) wraps in the termin
 - `#SBATCH --exclude=dgx01,dgx04` — `dgx04`'s CUDA driver is too old; `dgx01` we've also hit issues on. Keep this exclude.
 - Container image: `${HOME}/nvidia_pt.sqsh` (pyxis), mounted at `/mount`.
 - Stdout pattern: `%x-%j.out` (job-name + ID) — easy to find with a glob.
-- Output JSON goes to `reports/results/diagnostic_phase<N>.json`; checkpoints to `reports/checkpoints/diagnostic_phase<N>/`.
+- Paths inside `.sub` files are **relative to the repo root** (`python -u cluster/<NN>_<campaign>/run_X.py`, `--output reports/results/<label>.json`); submit from `~/thesis`.
+- Output JSON goes to `reports/results/<label>.json` (flat — notebooks and scripts read these exact paths); checkpoints to `reports/checkpoints/<label>/`.
 
 ## Supervised Training Pipeline
 
@@ -125,7 +138,8 @@ For initialization comparison experiments on real training (not just geometry/gr
 
 - Entry point: `run_supervised_experiment(exp_config, classifier_config, training_config)` in `src/rp_study/experiments/supervised_training.py`.
 - Schedulers supported via `TrainingConfig.scheduler`: `"none"`, `"cosine"`, `"step"`, `"onecycle"`, `"plateau"` (ReduceLROnPlateau, monitors `eval_train_loss` or `eval_train_accuracy`).
-- Diagnostics: set `diagnostics_every=N` to log per-layer gradient L2 norms + BN running stats every N epochs. The training loop also records `learning_rate` every epoch automatically.
+- Diagnostics: set `diagnostics_every=N` to log per-layer gradient L2 norms + BN running stats every N epochs. Set `log_grad_per_layer=True` for the full per-layer gradient vector. The training loop also records `learning_rate` every epoch automatically.
+- `ClassifierConfig.grad_rescale=r` inserts the `_GradRescale` op (identity forward, gradient × r in backward) after each hidden ReLU — the rcfwd mechanism.
 - Checkpoints: set `checkpoint_dir` + `checkpoint_every`; resume with `resume_checkpoint`.
 - Primary thesis metric: `eval_train_accuracy` (full train set in `model.eval()` mode). Pass criterion: `eval_train_accuracy ≥ 0.995` AND `eval_train_loss ≤ 0.10`.
 
@@ -134,4 +148,4 @@ For initialization comparison experiments on real training (not just geometry/gr
 1. Extend `TrainingConfig.scheduler` Literal in `config.py`.
 2. Add the construction branch in `_build_scheduler` (`supervised_training.py`).
 3. If it needs a per-step metric (like plateau does), extend the per-epoch `scheduler.step(...)` routing in the training loop — there's already a `scheduler_needs_metric` flag pattern in place.
-4. Smoke-test locally on CPU for 2 epochs before scping to the cluster.
+4. Smoke-test locally on CPU for 2 epochs before syncing to the cluster.

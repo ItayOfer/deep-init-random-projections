@@ -148,7 +148,7 @@ SLURM conventions: `#SBATCH --exclude=dgx01,dgx04` (driver / stability issues), 
 
 ### Post-meeting finding — the 100L NoBN failures were an Adam pathology
 
-The 4 failing architectures in the final audit (`{cifar10, fmnist} × 100L × {NoBN, BN}`) were all run with Adam. Following the May 2026 advisor meeting, replicating the advisor's own 100-layer recipe (plain SGD, `lr=1e-3`, `momentum=0`, `weight_decay=0`, `bs=128`, He init, normalized inputs) on `cluster/run_plain_sgd_100L.py` produced these numbers at epoch 5:
+The 4 failing architectures in the final audit (`{cifar10, fmnist} × 100L × {NoBN, BN}`) were all run with Adam. Following the May 2026 advisor meeting, replicating the advisor's own 100-layer recipe (plain SGD, `lr=1e-3`, `momentum=0`, `weight_decay=0`, `bs=128`, He init, normalized inputs) on `cluster/05_sgd_recovery/run_plain_sgd_100L.py` produced these numbers at epoch 5:
 
 | Dataset | Advisor | Our replication |
 |---|---|---|
@@ -159,7 +159,7 @@ Within 2 % of the advisor's reported numbers — confirms the dataset and the re
 
 **Diagnosis.** For He-init NoBN at depth 100, gradients are tiny but non-zero. Adam's second-moment estimate `v` then underflows to ~0 in float32 and the update becomes `lr · m̂ / √ε ≈ 10 · m̂` — large noisy updates that drive the next forward pass to underflow → permanent gradient death. Plain SGD multiplies by `lr` and stays gentle, so the forward pass survives. **Optimizer choice was the binary on/off — not architecture, not data normalization, not bias=0.**
 
-Rescue runs (`cluster/run_plain_sgd_recovery.py`, `_recovery2.py`):
+Rescue runs (`cluster/05_sgd_recovery/run_plain_sgd_recovery.py`, `_recovery2.py`):
 
 | Architecture | Audit best (Adam) | Recovery result |
 |---|---|---|
@@ -208,7 +208,7 @@ Following the He audit, the row-centered layer-balanced product-base initializer
 
 **Practical implication.** V2 with η=0.5 is competitive with He at L=30 (any optimizer), and *prefers plain SGD over Adam* at L=50/BN (the optimizer choice is decisive — Adam stuck, SGD passes). At L = 100 V2 fails under both Adam and SGD (both NoBN and BN), and so does He+recovery3 — **L=100/BN is the joint open problem across both initialisers**, not an initialiser-specific failure. Recipe details and trajectory plots are in notebook 13 Part 4 (Sections 19.1–19.8); the comprehensive 12-architecture V2 scoreboard is at §19.7.
 
-Result JSONs at `reports/results/row_centered_{audit,smoke,smoke2,smoke3,smoke4,audit4}_<arch>.json`. SLURM sub files at `cluster/row_centered_{smoke,audit,smoke2,smoke3,smoke4,audit4}_<arch>.sub`. Runners: `cluster/run_row_centered_audit.py` (round 1, η=0.5, He-passing recipes), `cluster/run_row_centered_audit_round2.py` (round 2 — modified recipes for the L=50+ NoBN failures + L=100 NoBN at η=0.1), `cluster/run_row_centered_audit_round3.py` (round 3 — V2+BN+Adam at L=100), `cluster/run_row_centered_audit_round4.py` (round 4 — V2+BN+SGD at all depths). Triage tooling at `cluster/triage_row_centered_smoke.py`.
+Result JSONs at `reports/results/row_centered_{audit,smoke,smoke2,smoke3,smoke4,audit4}_<arch>.json`. SLURM sub files at `cluster/06_v2_row_centered/row_centered_{smoke,audit,smoke2,smoke3,smoke4,audit4}_<arch>.sub`. Runners: `cluster/06_v2_row_centered/run_row_centered_audit.py` (round 1, η=0.5, He-passing recipes), `cluster/06_v2_row_centered/run_row_centered_audit_round2.py` (round 2 — modified recipes for the L=50+ NoBN failures + L=100 NoBN at η=0.1), `cluster/06_v2_row_centered/run_row_centered_audit_round3.py` (round 3 — V2+BN+Adam at L=100), `cluster/06_v2_row_centered/run_row_centered_audit_round4.py` (round 4 — V2+BN+SGD at all depths). Triage tooling at `cluster/06_v2_row_centered/triage_row_centered_smoke.py`.
 
 ## Conventions worth knowing
 

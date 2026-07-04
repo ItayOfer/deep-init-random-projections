@@ -19,7 +19,9 @@ Connect to the cluster and submit your job:
 ```bash
 ssh user@cluster
 # (Once logged in to login01):
-sbatch ~/thesis/cluster/your_experiment.sub
+# Submit from the repo root — .sub paths are relative to it
+cd ~/thesis
+sbatch cluster/<NN>_<campaign>/your_experiment.sub
 ```
 
 ---
