@@ -71,7 +71,7 @@ training runs for that idea were never launched.** That is the cliff-edge. ✅*v
   {smoke 20ep, audit 200ep}. ✅*verified*
 - **The single next action** is: sync to cluster, run the 6 `rcfwd_rescale_smoke_*` jobs, and
   answer "does it train?" — then triage to 200-ep audits.
-- **Cluster state is unknown** — no local `.out` logs newer than May 23; check `squeue -u $CLUSTER_USER`
+- **Cluster state is unknown** — no local `.out` logs newer than May 23; check `squeue -u "$CLUSTER_USER"`
   before assuming nothing is running. ✅*verified (newest local .out is May 23)*
 
 ### Uncommitted code that supports the last work (⚠️ review before organizing)

@@ -88,7 +88,7 @@ notebooks/                     # 12 exploratory + dashboard notebooks
   11_eta_sweep_analysis.ipynb
 
 cluster/                       # DLC / SLURM workflow
-  sync_to_cluster.sh           # rsync project to user@cluster
+  sync_to_cluster.sh           # rsync project to the cluster (identity from cluster/cluster.env)
   WORKFLOW.md                  # Daily cluster workflow
   run_diagnostic.py            # Phase-1 diagnostic runner (7 hypothesis tests)
   run_phase2.py                # Phase-2 longer runs
@@ -131,10 +131,10 @@ All three axes are tied together in `notebooks/05_initializer_dashboard.ipynb`.
 
 ## Cluster workflow (DLC / SLURM)
 
-Cluster: `user@cluster`. Code mirrors local repo at `~/thesis/`. Standard loop:
+Cluster: SLURM-managed; identity configured in `cluster/cluster.env` (gitignored). Code mirrors local repo at `~/thesis/`. Standard loop:
 
 1. Local: `bash cluster/sync_to_cluster.sh` (rsync; excludes `__pycache__`, `.git`, `data/`, `*.sqsh`, `logs/`).
-2. Cluster: clear stale bytecode, then `sbatch cluster/<job>.sub`, then `squeue -u $CLUSTER_USER`, then `tail -f <name>-<JOBID>.out`.
+2. Cluster: clear stale bytecode, then `sbatch cluster/<job>.sub`, then `squeue -u "$CLUSTER_USER"`, then `tail -f <name>-<JOBID>.out`.
 3. Local: `scp` results from `~/thesis/reports/results/`.
 
 SLURM conventions: `#SBATCH --exclude=dgx01,dgx04` (driver / stability issues), pyxis container `${HOME}/nvidia_pt.sqsh` mounted at `/mount`, stdout pattern `%x-%j.out`.

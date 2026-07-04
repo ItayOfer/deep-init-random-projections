@@ -18,6 +18,9 @@ reports/figures/
 # Local-only scratch / working notes (not part of the shared codebase)
 docs/scratch/
 
+# Local cluster identity (copy cluster/cluster.env.example and edit)
+cluster/cluster.env
+
 # Editor / OS noise
 .DS_Store
 .Rhistory

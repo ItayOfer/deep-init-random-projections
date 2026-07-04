@@ -38,7 +38,9 @@ src/rp_study/
 
 cluster/                     # SLURM campaigns, chronologically numbered — see cluster/README.md
   01_geometry/ ... 09_rcfwd_rescale/   # each dir: runner .py + .sub files for one campaign
-  sync_to_cluster.sh         # rsync the project to the-cluster (USE THIS — see workflow below)
+  sync_to_cluster.sh         # rsync the project to the cluster (USE THIS — see workflow below)
+  pull_results.sh            # fetch result JSONs + SLURM logs back by label glob
+  cluster.env(.example)      # cluster identity (user/host); cluster.env is gitignored
   WORKFLOW.md                # Daily-workflow notes for the cluster
 
 scripts/                     # standalone figure/analysis helpers — see scripts/README.md
@@ -90,7 +92,7 @@ logs/slurm/<campaign>/       # SLURM .out logs (local only, gitignored)
 
 ## Cluster Workflow
 
-The cluster is `user@cluster` (DLC, SLURM-managed). Code lives at `~/thesis/` on the cluster, mirroring this repo. **Always use the sync script for uploads** — never scp individual files (zsh on macOS keeps breaking long scp lines at the newline between source and destination, which produces silent failures).
+The cluster is SLURM-managed (pyxis containers); the user/host identity lives in `cluster/cluster.env` (gitignored — create it once with `cp cluster/cluster.env.example cluster/cluster.env` and edit). Code lives at `~/thesis/` on the cluster, mirroring this repo. **Always use the sync script for uploads** — never scp individual files (zsh on macOS keeps breaking long scp lines at the newline between source and destination, which produces silent failures).
 
 ### Standard sync-and-submit loop
 
@@ -102,17 +104,17 @@ This rsyncs the project root to `~/thesis/` on the cluster, excluding `__pycache
 
 **2. Cluster terminal — clear stale bytecode and submit:**
 ```bash
-ssh user@cluster    # if not already in
+source cluster/cluster.env && ssh "$CLUSTER_USER@$CLUSTER_HOST"    # if not already in
 find ~/thesis/src ~/thesis/cluster -name "__pycache__" -exec rm -rf {} +
 cd ~/thesis && sbatch cluster/<NN>_<campaign>/<job>.sub
-squeue -u $CLUSTER_USER
+squeue -u "$CLUSTER_USER"
 tail -f <jobname>-<JOBID>.out   # live log
 ```
 Clearing `__pycache__` matters: stale `.pyc` files have caused `AttributeError` on freshly added dataclass fields more than once. Always clear after a `config.py` or `experiments/*.py` change.
 
 **3. Local Mac terminal — pull results back when done:**
 ```bash
-HOST=user@cluster
+source cluster/cluster.env; HOST="$CLUSTER_USER@$CLUSTER_HOST"
 scp "${HOST}:~/thesis/reports/results/<file>.json" reports/results/
 scp "${HOST}:~/thesis/<jobname>-*.out" logs/slurm/<NN>_<campaign>/
 ```
@@ -120,9 +122,9 @@ Quote the remote glob — `*` must expand on the cluster, not in local zsh.
 
 ### When pasting commands fails
 
-If a long command (especially `scp src/... user@.../target`) wraps in the terminal and gets split at the newline, zsh treats it as two commands and the upload fails silently with `no such file or directory: user@...`. Workarounds:
+If a long command (especially `scp src/... user@host:target`) wraps in the terminal and gets split at the newline, zsh treats it as two commands and the upload fails silently with `no such file or directory: user@...`. Workarounds:
 - Prefer `cluster/sync_to_cluster.sh` for any multi-file upload.
-- For one-off uploads, put the whole `scp` on a single physical line, or use a shell variable: `HOST=user@cluster; scp foo.py "$HOST:~/thesis/foo.py"`.
+- For one-off uploads, put the whole `scp` on a single physical line, or use a shell variable: `source cluster/cluster.env; HOST="$CLUSTER_USER@$CLUSTER_HOST"; scp foo.py "$HOST:~/thesis/foo.py"`.
 
 ### SLURM script conventions used here
 

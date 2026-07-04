@@ -61,7 +61,9 @@ Daily workflow lives in `WORKFLOW.md`. Campaigns are organized in **chronologica
 
 | File | Purpose |
 |---|---|
-| `sync_to_cluster.sh` | Rsync the project to `user@cluster:~/thesis/` — always use this, never scp individual files |
+| `sync_to_cluster.sh` | Rsync the project to the cluster (`--dry-run`, `--print-dest` supported) — always use this, never scp individual files |
+| `pull_results.sh` | Fetch result JSONs + SLURM logs back: `bash cluster/pull_results.sh '<label>*' <NN>_<campaign>` |
+| `cluster.env.example` | Template for `cluster/cluster.env` (gitignored) — your cluster user/host live there, not in the repo |
 | `setup_container.sh` | Rebuild the pyxis container when dependencies change |
 | `test_gpu.py` + `test_job.sub` | Cluster/GPU sanity check |
 | `WORKFLOW.md` | Daily sync → submit → tail → pull loop |
@@ -89,16 +91,16 @@ pyxis container `${HOME}/nvidia_pt.sqsh`, mounted at `/mount`. See `WORKFLOW.md`
 bash cluster/sync_to_cluster.sh
 
 # 2. Cluster
-ssh user@cluster
+source cluster/cluster.env && ssh "$CLUSTER_USER@$CLUSTER_HOST"
 find ~/thesis/src -name "__pycache__" -exec rm -rf {} +
 find ~/thesis/cluster -name "__pycache__" -exec rm -rf {} +
 cd ~/thesis
 sbatch cluster/<NN>_<campaign>/<job>.sub
-squeue -u $CLUSTER_USER -o "%.18i %.40j %.8T %.10M %R"
+squeue -u "$CLUSTER_USER" -o "%.18i %.40j %.8T %.10M %R"
 tail -f <jobname>-<JOBID>.out   # live log
 
 # 3. Local
-HOST=user@cluster
+source cluster/cluster.env; HOST="$CLUSTER_USER@$CLUSTER_HOST"
 scp "${HOST}:~/thesis/reports/results/<label>.json" reports/results/
 scp "${HOST}:~/thesis/<label>-*.out" logs/slurm/<NN>_<campaign>/
 ```

@@ -17,7 +17,7 @@ bash cluster/sync_to_cluster.sh
 **Step 3: SSH and Submit**
 Connect to the cluster and submit your job:
 ```bash
-ssh user@cluster
+source cluster/cluster.env && ssh "$CLUSTER_USER@$CLUSTER_HOST"
 # (Once logged in to login01):
 # Submit from the repo root — .sub paths are relative to it
 cd ~/thesis
@@ -30,7 +30,7 @@ sbatch cluster/<NN>_<campaign>/your_experiment.sub
 If you add a new package to `requirements.txt`, you *must* rebuild the `.sqsh` container so the package is installed inside it.
 
 1. **Local:** Update `requirements.txt` and run `bash cluster/sync_to_cluster.sh`.
-2. **Local:** SSH into the cluster (`ssh user@cluster`).
+2. **Local:** SSH into the cluster (`source cluster/cluster.env && ssh "$CLUSTER_USER@$CLUSTER_HOST"`).
 3. **Cluster (Login node):** Request an interactive compute node:
    ```bash
    srun -p dlc --pty --time=01:00:00 --mem=16G --cpus-per-task=4 /bin/bash
