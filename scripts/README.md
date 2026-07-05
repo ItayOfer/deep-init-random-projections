@@ -21,6 +21,12 @@ Standalone helpers that generate figures into `reports/figures/` or produce deri
 
 Figures land in `reports/figures/gain_funnels/` and `reports/figures/rcfwd_rescale/`.
 
+## Learning-speed analysis
+
+| Script | Shows |
+|---|---|
+| `depth_learning_speed.py` | Early learning speed vs depth (acc @ ep20, epochs-to-50%) for He / V2 / rcfwd from existing result JSONs → `reports/figures/rcfwd_rescale/learning_speed_vs_depth.png` |
+
 ## Depth / gradient diagnostics
 
 | Script | Shows |

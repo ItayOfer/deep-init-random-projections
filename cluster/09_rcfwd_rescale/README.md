@@ -41,6 +41,10 @@ Three observations. (1) **The mechanism survives training dynamics**: per-layer 
 
 **Verdict:** the campaign question — *does it train?* — is answered **yes on stability, partially on speed**. All six promoted to the 200-epoch audits; the open question is whether the slow cells accelerate as representations form or plateau far from the criterion.
 
+## Diagnosing the slowness (Jul 5)
+
+`scripts/depth_learning_speed.py` compares early learning speed across families from existing results (acc @ ep20, NoBN): He + *plain SGD lr=1e-3* reaches **0.88** at fmnist/100L where rcfwd (lr=1e-2) reaches 0.168 — so depth-100 NoBN is not intrinsically slow, and V2 at 30L learns fast (0.73–0.97) under hotter recipes (momentum + onecycle) — so row-centered content alone doesn't explain it either. The prime suspect is **gradient scale**: the rescale equalizes all layers *down to the output layer's small magnitude* (uniform ≠ large; He's plain-SGD speed at depth comes precisely from its non-uniform, large early-layer gradients). Hypothesis test: the **LR ladder** — `rcfwd_lr{3e2,1e1,3e1}_smoke_{fmnist_100L,cifar10_50L}.sub` (six 20-epoch smokes at lr = 0.03 / 0.1 / 0.3, same runner via `--lr`, outputs `rcfwd_lr*_smoke_*.json`). If higher LR closes the gap, the recipe was timid (next dial: momentum); if not, the bottleneck is representation content and the idea needs revision, not tuning.
+
 ## Reproduce
 
 ```bash
