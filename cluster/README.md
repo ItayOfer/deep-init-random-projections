@@ -21,7 +21,7 @@ Daily workflow lives in `WORKFLOW.md`. Campaigns are organized in **chronologica
 | 06 | [`06_v2_row_centered/`](06_v2_row_centered/README.md) | May 22–24 | V2 (`row_centered_layer_balanced_product_base`, η=0.5) smoke + audit rounds 1–4 | **5/12 PASS** (all 30L + fmnist/50L/BN under SGD); depth ceiling ≈ L=30 |
 | 07 | [`07_v2_eta_nobn/`](07_v2_eta_nobn/README.md) | May 25 | V2 NoBN with per-architecture η\* (gradient-ratio minimizing) + lr1e-6 probes | Confirmed V2 depth ceiling; no η rescues L=100 |
 | 08 | [`08_he_lowlr_probe/`](08_he_lowlr_probe/README.md) | May 25 | He + plain SGD at ultra-low LR on 100L/BN (mechanism probe) | Survives numerically, frozen at chance |
-| 09 | [`09_rcfwd_rescale/`](09_rcfwd_rescale/README.md) | May 25 | rcfwd: `row_centered_forward_balanced` init + per-layer backward gradient rescale (`grad_rescale=r`) | Init-time validated; **smoke jobs launched 2026-07-04, results pending** |
+| 09 | [`09_rcfwd_rescale/`](09_rcfwd_rescale/README.md) | May 25 | rcfwd: `row_centered_forward_balanced` init + per-layer backward gradient rescale (`grad_rescale=r`) | **Smoke ✓ (all 6 stable — first row-centered 100L NoBN training that survives)**; learning slow except fmnist/30L (0.78 @ ep20); audits pending |
 
 ### Campaign details
 

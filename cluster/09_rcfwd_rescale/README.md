@@ -1,4 +1,4 @@
-# 09 — rcfwd: Gradient Rescale (prepared May 25; smoke jobs first launched Jul 4, 2026)
+# 09 — rcfwd: Gradient Rescale (prepared May 25, 2026; smoke completed Jul 4)
 
 **Question.** `row_centered_forward_balanced` keeps the forward pass perfectly flat (g_fwd = 1) but its backward gain is g_bwd = 1/r ≈ 1.21 per layer — compounding to ~10⁸ over 100 layers. A `GradRescale` op (identity forward, gradient × r = √((π−1)/π) ≈ 0.826 in backward) after each hidden ReLU cancels that *exactly, in closed form* — a non-adaptive per-layer LR of r^(L−l). Validated at initialization. **Does it train?**
 
@@ -24,9 +24,22 @@ Implementation: `ClassifierConfig.grad_rescale` ([config.py](../../src/rp_study/
 
 `run_rcfwd_gradrescale.py` — deliberately minimal so the rescale is the only new variable: init `row_centered_forward_balanced`, `grad_rescale=0.8256`, plain SGD lr 1e-2 (mom 0, wd 0, fixed LR), NoBN, width 500, bs 256, seed 42, no clipping (assert-enforced). Matrix: {fmnist, cifar10} × {30, 50, 100}L × {smoke 20 ep, audit 200 ep} = 12 subs. Smoke logs per-layer gradients **every epoch** — the first-ever view of whether the rescale survives training dynamics (weights won't stay row-centered as SGD updates them).
 
-## Status & what to expect
+## Smoke results (20 epochs) — it trains, stably, everywhere
 
-**Training results: none yet.** The 6 smoke jobs were submitted 2026-07-04; `reports/results/rcfwd_rescale_*.json` will appear as they finish. Reading the smoke results: accuracy moving off chance by epoch ~5–10 and per-layer gradient ratios staying ~10× (not creeping back toward 10⁷) = the mechanism survives training → promote to audits. Watch the last ~8 layers and CIFAR-10's input layer — the residual ratio at init concentrates there.
+All six architectures completed 20/20 epochs with **no NaN, no abort** — the first row-centered configuration in this program to survive 100L NoBN training (V2 hit non-finite loss at epoch 1 on every ≥50L NoBN cell). From `rcfwd_rescale_smoke_*.json`:
+
+| Cell | eval-train acc ep1 → ep20 | loss ep20 | grad ratio ep1 → ep20 | reading |
+|---|---|---|---|---|
+| fmnist/30L | 0.117 → **0.777** (rising) | 0.60 | 1.2× → 7.8× | learning strongly |
+| fmnist/50L | 0.106 → 0.171 | 2.20 | 2.1× → 5.1× | slow, monotone |
+| fmnist/100L | 0.102 → 0.168 | 2.21 | 3.3× → 18.5× | slow, monotone, **stable at 100L** |
+| cifar10/30L | 0.104 → 0.149 | 2.25 | 2.3× → 2.2× | slow, monotone |
+| cifar10/50L | 0.102 → 0.132 | 2.28 | 2.3× → 2.5× | slow, monotone |
+| cifar10/100L | 0.099 → 0.126 | 2.29 | 2.3× → 5.6× | slow, monotone, stable |
+
+Three observations. (1) **The mechanism survives training dynamics**: per-layer gradient ratios stay He-like (≤18.5×) for all 20 epochs — they drift upward as SGD moves the weights off exact row-centering (the rescale is static), but nowhere near the 10⁷–10⁸ it cancels at init. (2) **Learning is monotone but slow** everywhere except fmnist/30L — consistent with the geometry finding (campaign [01](../01_geometry/README.md)): forward-balanced row-centering preserves signal *scale*, not class structure, so representations must be rebuilt from noise. (3) **Bit-exact reproducibility**: the May-25 and Jul-4 runs (different SLURM jobs, ~6 weeks apart) produced identical metrics to 4 decimals (seed 42, e.g. fmnist/30L best 0.7774 both times).
+
+**Verdict:** the campaign question — *does it train?* — is answered **yes on stability, partially on speed**. All six promoted to the 200-epoch audits; the open question is whether the slow cells accelerate as representations form or plateau far from the criterion.
 
 ## Reproduce
 

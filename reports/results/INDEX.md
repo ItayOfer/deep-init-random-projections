@@ -13,7 +13,7 @@ Every JSON here is the output of one cluster job (filename stem = SLURM job name
 | V2 η\* NoBN | `v2_nobn_sgd_smoke_*.json` (6), `v2_nobn_sgd_lr1e6_smoke_*.json` (6) | `cluster/07_v2_eta_nobn/` | May 25 | Per-arch η\* does not lift the depth ceiling; L=100 still overflows/diverges. *(audit runs produced no JSONs — smoke did not justify them)* |
 | η sweep (local) | `eta_sweep_research.json`, `eta_star_recommended.json` | `scripts/eta_sweep_research.py`, `scripts/eta_sweep_pick.py` | May 25 | Gradient-ratio-minimizing η per architecture (input to campaign 07) |
 | He low-LR probe | `he_sgd_lowlr2_smoke_{cifar10,fmnist}_100L_bn.json` | `cluster/08_he_lowlr_probe/` | May 25 | He+SGD at ultra-low LR on 100L/BN: numerically stable but frozen at chance *(round-1 lowlr JSONs not retained)* |
-| rcfwd grad-rescale | *(none)* | `cluster/09_rcfwd_rescale/` | — | **Never launched.** Runners + subs prepared May 25; init-time validation figures in `reports/figures/rcfwd_rescale/` |
+| rcfwd grad-rescale | `rcfwd_rescale_smoke_*.json` (6) | `cluster/09_rcfwd_rescale/` | May 25 + Jul 4 (identical reruns) | **First stable 100L NoBN row-centered training** — all 6 smokes complete 20 ep, no NaN, grad ratios ≤18.5×; learning monotone but slow (fmnist/30L 0.78, rest 0.12–0.17); audits pending |
 
 ## Pass criterion
 
@@ -24,4 +24,4 @@ Every JSON here is the output of one cluster job (filename stem = SLURM job name
 - `diagnostic_phase4.json` — phase 4 ran but its JSON was not retained.
 - `v2_nobn_sgd_audit_*.json` — audit subs exist but were not run (smoke results did not justify them).
 - `he_sgd_lowlr_smoke_*` round 1 — superseded by `lowlr2` within the same day.
-- `rcfwd_rescale_*` — the prepared next campaign; no training results yet.
+- `rcfwd_rescale_audit_*` — the 200-epoch audits have not run yet (smoke results above justify promoting all six).

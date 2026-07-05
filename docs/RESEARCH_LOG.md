@@ -64,7 +64,7 @@ Chronological narrative of the project: what each phase asked, what was run, wha
 - **He low-LR probe** (`cluster/08_he_lowlr_probe/`): 100L/BN at LR ≤ 1e-6 survives numerically but stays frozen at chance — confirming the wall is not merely a stability issue.
 - **rcfwd grad-rescale** (`cluster/09_rcfwd_rescale/`): new idea — initialize with `row_centered_forward_balanced` (forward gain exactly 1) and cancel the backward gain `1/r ≈ 1.21` with a custom autograd op (`_GradRescale`: identity forward, multiply gradient by `r` per layer). A closed-form, non-adaptive per-layer LR. At initialization it flattens the error-signal blowup from ~1e8× to ~1.2× and the gradient ratio from 5×10⁷ to ~6× (He-like). Implementation: `grad_rescale` config field + hook in `src/rp_study/models/classifiers.py`; figures in `reports/figures/rcfwd_rescale/`.
 
-**Status:** the six rcfwd smoke jobs were first submitted on 2026-07-04; results pending. Full state: `docs/plans_handoffs/2026-07-04_research_status_handoff.md`.
+**Status (updated Jul 5):** the six rcfwd 20-epoch smokes completed (run May 25 and reproduced bit-exactly Jul 4): **all six train stably** — no NaN even at 100L NoBN (where V2 died at epoch 1), per-layer gradient ratios hold at 2–18× throughout. Learning is monotone but slow except fmnist/30L (0.78 @ ep20). All six promoted to the 200-epoch audits.
 
 ---
 
@@ -72,4 +72,4 @@ Chronological narrative of the project: what each phase asked, what was run, wha
 
 1. **V2 depth ceiling (L ≥ 50):** compounding per-layer variance scaling overflows float32; needs a reformulation (e.g., scale-free parameterization) rather than tuning.
 2. **100L + BN joint wall:** fails for He and V2, under Adam and SGD, with and without warmup/plateau — the strongest structural finding; candidate explanations involve BN's interaction with near-zero gradients at extreme depth.
-3. **rcfwd:** does training-time gradient rescaling actually train? (Runners ready in `cluster/09_rcfwd_rescale/`.)
+3. **rcfwd:** stability at depth is solved (smoke-verified, incl. 100L NoBN); the open half is learning *speed* — do the slow cells accelerate over 200 epochs (`rcfwd_rescale_audit_*.sub`), and can the LR be raised given the huge stability margin?
