@@ -58,7 +58,7 @@ ep_pass = next(e["epoch"] for e in h30 if e["eval_train_accuracy"] >= CRIT and e
 axes[0, 0].annotate(f"PASS @ ep{ep_pass}", xy=(ep_pass, CRIT), xytext=(ep_pass + 22, 0.82),
                     arrowprops=dict(arrowstyle="->", color=DEPTH_COLOR[30]), color=DEPTH_COLOR[30], fontsize=9)
 
-# --- (c) LR ladder ---
+# --- (c) LR ladder: categorical bars + the counterfactual anchor ---
 ax = axes[1, 0]
 LRS = [0.01, 0.03, 0.1, 0.3]
 LADDER = {
@@ -67,29 +67,33 @@ LADDER = {
     "cifar10_50L": {0.01: "rcfwd_rescale_smoke_cifar10_50L.json", 0.03: "rcfwd_lr3e2_smoke_cifar10_50L.json",
                     0.1: "rcfwd_lr1e1_smoke_cifar10_50L.json", 0.3: "rcfwd_lr3e1_smoke_cifar10_50L.json"},
 }
-for cell, files, color, marker in [("fmnist_100L", LADDER["fmnist_100L"], DEPTH_COLOR[100], "o"),
-                                   ("cifar10_50L", LADDER["cifar10_50L"], DEPTH_COLOR[50], "s")]:
-    xs, ys, dx = [], [], []
-    for lr in LRS:
-        h = hist(files[lr])
+W = 0.36
+for i, (cell, color) in enumerate([("fmnist_100L", DEPTH_COLOR[100]), ("cifar10_50L", DEPTH_COLOR[50])]):
+    for j, lr in enumerate(LRS):
+        x = j + (i - 0.5) * W
+        h = hist(LADDER[cell][lr])
         if h:
-            xs.append(lr)
-            ys.append(next(e["eval_train_accuracy"] for e in h if e["epoch"] == 20))
+            y = next(e["eval_train_accuracy"] for e in h if e["epoch"] == 20)
+            ax.bar(x, y, W * 0.92, color=color, alpha=0.85,
+                   label=cell.replace("_", " ") if j == 0 else None)
+            ax.text(x, y + 0.012, f"{y:.2f}", ha="center", fontsize=8, color=color)
         else:
-            dx.append(lr)
-    ax.plot(xs, ys, marker=marker, color=color, lw=1.8, label=cell.replace("_", " "))
-    ax.plot(dx, [0.02] * len(dx), marker="x", ms=11, mew=2.5, ls="none", color=color)
-for lr, txt_y in [(0.1, 0.07), (0.3, 0.07)]:
-    ax.annotate("NaN @ ep1", xy=(lr, 0.02), xytext=(lr, txt_y), fontsize=8, ha="center", color="#555")
-ax.axhline(0.1, color="gray", ls=":", lw=1, alpha=0.6)
-ax.set_xscale("log")
-ax.set_xticks(LRS)
-ax.set_xticklabels([str(l) for l in LRS])
-ax.set_title("(c) LR ladder — ep-20 accuracy is LR-insensitive, then diverges")
-ax.set_xlabel("learning rate (log scale)")
+            ax.bar(x, 0.04, W * 0.92, color="white", edgecolor=color, hatch="////", lw=1.2)
+ax.text(2.5, 0.24, "hatched = diverged\n(NaN at epoch 1)", ha="center", fontsize=8.5, color="#555",
+        bbox=dict(boxstyle="round,pad=0.35", fc="#f5f5f5", ec="#bbb", lw=0.8))
+# what fast learning at this depth looks like (He + plain SGD lr=1e-3, fmnist/100L)
+he100 = next(e["eval_train_accuracy"] for e in hist("plain_sgd_100L_nobn_w512_fashion_mnist.json") if e["epoch"] == 20)
+ax.axhline(he100, color="#4363d8", ls="--", lw=1.4)
+ax.text(1.5, he100 - 0.035, f"He + plain SGD (lr=0.001) at fmnist/100L: {he100:.2f} @ ep20\n— the gap no learning rate closes",
+        fontsize=8.5, color="#4363d8", ha="center", va="top")
+ax.axhline(0.1, color="gray", ls=":", lw=1, alpha=0.7)
+ax.text(-0.42, 0.112, "chance", fontsize=8, alpha=0.6)
+ax.set_xticks(range(len(LRS)))
+ax.set_xticklabels([f"lr = {l}" for l in LRS])
+ax.set_title("(c) LR ladder — accuracy @ ep20 barely responds to LR, then diverges")
 ax.set_ylabel("eval-train accuracy @ ep20")
-ax.set_ylim(0, 0.35)
-ax.legend(fontsize=9)
+ax.set_ylim(0, 1.0)
+ax.legend(fontsize=9, loc="center left")
 
 # --- (d) fmnist/30L: rcfwd vs tuned He ---
 ax = axes[1, 1]
