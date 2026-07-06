@@ -1,0 +1,56 @@
+[
+  {
+    "init_strategy": "he",
+    "depth": 30,
+    "overflow": false,
+    "knn_accuracy": 0.5185,
+    "distance_correlation": 0.5061889147370495,
+    "effective_dim": 4.438435190072111,
+    "effective_dim_original": 27.78701162948413
+  },
+  {
+    "init_strategy": "he",
+    "depth": 50,
+    "overflow": false,
+    "knn_accuracy": 0.3715,
+    "distance_correlation": 0.4567688658635048,
+    "effective_dim": 2.3466862164396116,
+    "effective_dim_original": 27.78701162948413
+  },
+  {
+    "init_strategy": "he",
+    "depth": 100,
+    "overflow": false,
+    "knn_accuracy": 0.2395,
+    "distance_correlation": 0.41219163601162456,
+    "effective_dim": 1.2911057360679283,
+    "effective_dim_original": 27.78701162948413
+  },
+  {
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 30,
+    "overflow": false,
+    "knn_accuracy": 0.0955,
+    "distance_correlation": 0.31180206906744307,
+    "effective_dim": 384.09549473983475,
+    "effective_dim_original": 27.78701162948413
+  },
+  {
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 50,
+    "overflow": false,
+    "knn_accuracy": 0.109,
+    "distance_correlation": 0.27761768686263505,
+    "effective_dim": 368.8487756611291,
+    "effective_dim_original": 27.78701162948413
+  },
+  {
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 100,
+    "overflow": false,
+    "knn_accuracy": 0.105,
+    "distance_correlation": 0.23366788200459598,
+    "effective_dim": 323.9895380660402,
+    "effective_dim_original": 27.78701162948413
+  }
+]

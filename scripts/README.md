@@ -27,6 +27,8 @@ Figures land in `reports/figures/gain_funnels/` and `reports/figures/rcfwd_resca
 |---|---|
 | `depth_learning_speed.py` | Early learning speed vs depth (acc @ ep20, epochs-to-50%) for He / V2 / rcfwd from existing result JSONs → `reports/figures/rcfwd_rescale/learning_speed_vs_depth.png` |
 | `rcfwd_campaign_summary.py` | The campaign-09 verdict in one 4-panel figure (audit curves, LR ladder, rcfwd-vs-tuned-He at 30L) → `rcfwd_campaign_summary.png` (copy embedded from `docs/figures/`) |
+| `content_probe_linear.py` | Scale-invariant content probes (cosine k-NN + linear probe) at the trained depths for He vs rcfwd init → `content_probe_linear.json` |
+| `content_profile_per_layer.py` | Linear-probe accuracy vs layer index at init, width 500 — where content dies per init family → `content_profile_per_layer.{json,png}` |
 
 ## Depth / gradient diagnostics
 

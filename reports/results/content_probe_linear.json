@@ -1,0 +1,86 @@
+[
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "depth": 30,
+    "cosine_knn_accuracy": 0.556,
+    "linear_probe_accuracy": 0.552
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "depth": 50,
+    "cosine_knn_accuracy": 0.418,
+    "linear_probe_accuracy": 0.428
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "depth": 100,
+    "cosine_knn_accuracy": 0.2,
+    "linear_probe_accuracy": 0.286
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 30,
+    "cosine_knn_accuracy": 0.12,
+    "linear_probe_accuracy": 0.096
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 50,
+    "cosine_knn_accuracy": 0.124,
+    "linear_probe_accuracy": 0.114
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 100,
+    "cosine_knn_accuracy": 0.09,
+    "linear_probe_accuracy": 0.09
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "depth": 30,
+    "cosine_knn_accuracy": 0.2,
+    "linear_probe_accuracy": 0.192
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "depth": 50,
+    "cosine_knn_accuracy": 0.164,
+    "linear_probe_accuracy": 0.146
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "depth": 100,
+    "cosine_knn_accuracy": 0.102,
+    "linear_probe_accuracy": 0.148
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 30,
+    "cosine_knn_accuracy": 0.088,
+    "linear_probe_accuracy": 0.13
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 50,
+    "cosine_knn_accuracy": 0.066,
+    "linear_probe_accuracy": 0.114
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "depth": 100,
+    "cosine_knn_accuracy": 0.102,
+    "linear_probe_accuracy": 0.132
+  }
+]

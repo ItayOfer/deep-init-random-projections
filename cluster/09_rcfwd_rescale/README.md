@@ -67,7 +67,31 @@ Gradient ratios stay 3–37× through all 200 epochs — **long-term stability f
 
 **Terminology.** *Conditioning* = the backward-pass scale structure: the per-layer gradient-norm ratio `max_l/min_l ‖∂C/∂W^l‖` (from BP4, governed by the per-layer forward/backward gains, compounding as r^L). Bad conditioning means no global LR fits all layers; it says nothing about gradient *direction*. *Content* = the forward-pass information structure at init: how much class-relevant input structure survives in `a^L(x)`, measured label-free by k-NN accuracy / distance correlation / effective dimension on the representations (equivalently: how much the induced kernel `k_L(x,x′)` still varies with input similarity). The program populates all four cells of the 2×2: He/30L (content ✓ conditioning ✓ → fast), He/100L NoBN (content ✓ conditioning ✗ → optimizer-fixable), **rcfwd/100L (content ✗ conditioning ✓ → stable but frozen)**, V2/100L (both ✗ → NaN at epoch 1).
 
-**The finding:** rcfwd is not uniformly slow — its trainability is **depth-graded exactly as campaign [01](../01_geometry/README.md)'s geometry decay predicts**. Where class structure survives the forward pass (30L), rcfwd matches *tuned* He to the criterion with an untuned fixed-LR recipe; where the geometry measurements show structure gone (≥50–100L), no learning rate in the stable range recovers it. Perfect gradient conditioning is **necessary but not sufficient**: gradient *flow* and representation *content* are separate, independently-measurable bottlenecks, and rcfwd is the experiment that separates them. The remaining path to depth is not backward-pass engineering but a class-structure-preserving initialization — an open problem.
+**The finding:** rcfwd is not uniformly slow — its trainability is depth-graded. Perfect gradient conditioning is **necessary but not sufficient**: gradient *flow* and representation *content* are separate, independently-measurable bottlenecks, and rcfwd is the experiment that separates them.
+
+## Where the content dies — the probe chain (Jul 6)
+
+Three rounds of init-time probes, each sharpening (and once *refuting*) the story; all reproducible from `scripts/content_probe_linear.py` and `scripts/content_profile_per_layer.py`:
+
+1. **Final-layer probes** (`geometry_content_probe_*.json`, `content_probe_linear.json`): He's depth-L representations hold class structure at every trained depth (fmnist linear probe 0.55 → 0.29 from 30L to 100L); rcfwd's are at **chance at all depths under every ruler tried** — Euclidean k-NN, cosine k-NN, and linear probe alike. This confirms the content deficit vs He, but **refutes the naive prediction** that final-layer content explains rcfwd's own depth-grading: the predictor is flat while the outcome is graded (30L passes from a representation no linear readout can classify at init).
+
+2. **The per-layer profile** (width 500 = the trained nets; the seed makes layer ℓ of the 30L and 100L nets *identical*, so one curve describes all three):
+
+![Per-layer content profile at init](../../docs/figures/content_profile_per_layer.png)
+
+On fmnist, rcfwd matches He through layers 1–5 (0.79–0.81 both), then collapses: 0.51 @ ℓ=12, 0.30 @ 16, 0.20 @ 20, chance by ℓ≈25. He glides down slowly and is still above chance at ℓ=100. The knee sits where the theory says it should: the class-correlated signal decays like r^ℓ = 0.826^ℓ (≈0.10 at ℓ=12) while forward-balancing holds the *total* RMS flat — so the SNR, not the scale, dies.
+
+3. **The refined mechanism — noise-tail length.** Every rcfwd net starts with the same ~20-layer informative prefix; what grows with network depth is the tail of dead layers between that prefix and the loss:
+
+| Net | informative prefix | noise tail | training outcome |
+|---|---|---|---|
+| 30L | ~20 layers | ~10 | **PASS** @ ep74 |
+| 50L | ~20 | ~30 | crawl (0.79 @ ep200, fmnist) |
+| 100L | ~20 | ~80 | frozen |
+
+Trainability tracks the tail monotonically on both datasets (CIFAR's weaker prefix — 0.34 at ℓ=1 — additionally explains why its 30L crawls where fmnist's passes). The bottleneck is a *dynamics* quantity: gradient descent must rebuild the dead tail, and the error signal reaching the informative prefix decorrelates with every random layer it traverses backward.
+
+**Conclusion, final form:** rcfwd fixes the backward pass completely; what it cannot fix is that the forward pass stops *delivering the data* after ~20 layers. The open problem is therefore precise: slow the per-layer content decay (He's profile is the benchmark) — e.g. partial centering, structure-preserving hybrids — screenable with these same probes before any training.
 
 ## Reproduce
 

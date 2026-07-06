@@ -1,0 +1,394 @@
+[
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 1,
+    "width": 500,
+    "linear_probe_accuracy": 0.81
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 2,
+    "width": 500,
+    "linear_probe_accuracy": 0.806
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 3,
+    "width": 500,
+    "linear_probe_accuracy": 0.764
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 5,
+    "width": 500,
+    "linear_probe_accuracy": 0.766
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 8,
+    "width": 500,
+    "linear_probe_accuracy": 0.714
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 12,
+    "width": 500,
+    "linear_probe_accuracy": 0.7
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 16,
+    "width": 500,
+    "linear_probe_accuracy": 0.654
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 20,
+    "width": 500,
+    "linear_probe_accuracy": 0.582
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 25,
+    "width": 500,
+    "linear_probe_accuracy": 0.53
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 30,
+    "width": 500,
+    "linear_probe_accuracy": 0.47
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 40,
+    "width": 500,
+    "linear_probe_accuracy": 0.426
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 50,
+    "width": 500,
+    "linear_probe_accuracy": 0.38
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 70,
+    "width": 500,
+    "linear_probe_accuracy": 0.316
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "he",
+    "layer": 100,
+    "width": 500,
+    "linear_probe_accuracy": 0.258
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 1,
+    "width": 500,
+    "linear_probe_accuracy": 0.808
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 2,
+    "width": 500,
+    "linear_probe_accuracy": 0.806
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 3,
+    "width": 500,
+    "linear_probe_accuracy": 0.802
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 5,
+    "width": 500,
+    "linear_probe_accuracy": 0.786
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 8,
+    "width": 500,
+    "linear_probe_accuracy": 0.684
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 12,
+    "width": 500,
+    "linear_probe_accuracy": 0.512
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 16,
+    "width": 500,
+    "linear_probe_accuracy": 0.302
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 20,
+    "width": 500,
+    "linear_probe_accuracy": 0.204
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 25,
+    "width": 500,
+    "linear_probe_accuracy": 0.112
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 30,
+    "width": 500,
+    "linear_probe_accuracy": 0.13
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 40,
+    "width": 500,
+    "linear_probe_accuracy": 0.096
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 50,
+    "width": 500,
+    "linear_probe_accuracy": 0.104
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 70,
+    "width": 500,
+    "linear_probe_accuracy": 0.106
+  },
+  {
+    "dataset": "fashion_mnist",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 100,
+    "width": 500,
+    "linear_probe_accuracy": 0.082
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 1,
+    "width": 500,
+    "linear_probe_accuracy": 0.296
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 2,
+    "width": 500,
+    "linear_probe_accuracy": 0.278
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 3,
+    "width": 500,
+    "linear_probe_accuracy": 0.258
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 5,
+    "width": 500,
+    "linear_probe_accuracy": 0.254
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 8,
+    "width": 500,
+    "linear_probe_accuracy": 0.214
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 12,
+    "width": 500,
+    "linear_probe_accuracy": 0.2
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 16,
+    "width": 500,
+    "linear_probe_accuracy": 0.214
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 20,
+    "width": 500,
+    "linear_probe_accuracy": 0.196
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 25,
+    "width": 500,
+    "linear_probe_accuracy": 0.158
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 30,
+    "width": 500,
+    "linear_probe_accuracy": 0.168
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 40,
+    "width": 500,
+    "linear_probe_accuracy": 0.128
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 50,
+    "width": 500,
+    "linear_probe_accuracy": 0.138
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 70,
+    "width": 500,
+    "linear_probe_accuracy": 0.124
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "he",
+    "layer": 100,
+    "width": 500,
+    "linear_probe_accuracy": 0.112
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 1,
+    "width": 500,
+    "linear_probe_accuracy": 0.344
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 2,
+    "width": 500,
+    "linear_probe_accuracy": 0.298
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 3,
+    "width": 500,
+    "linear_probe_accuracy": 0.268
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 5,
+    "width": 500,
+    "linear_probe_accuracy": 0.266
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 8,
+    "width": 500,
+    "linear_probe_accuracy": 0.182
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 12,
+    "width": 500,
+    "linear_probe_accuracy": 0.162
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 16,
+    "width": 500,
+    "linear_probe_accuracy": 0.126
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 20,
+    "width": 500,
+    "linear_probe_accuracy": 0.12
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 25,
+    "width": 500,
+    "linear_probe_accuracy": 0.098
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 30,
+    "width": 500,
+    "linear_probe_accuracy": 0.114
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 40,
+    "width": 500,
+    "linear_probe_accuracy": 0.104
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 50,
+    "width": 500,
+    "linear_probe_accuracy": 0.132
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 70,
+    "width": 500,
+    "linear_probe_accuracy": 0.082
+  },
+  {
+    "dataset": "cifar10",
+    "init_strategy": "row_centered_forward_balanced",
+    "layer": 100,
+    "width": 500,
+    "linear_probe_accuracy": 0.104
+  }
+]
