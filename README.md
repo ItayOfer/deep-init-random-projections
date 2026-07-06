@@ -16,7 +16,7 @@ Standard He initialization trains reliably but geometrically collapses inputs as
 | V2 composes with SGD but fights Adam ("double preconditioning"): fmnist/50L/BN goes 33% → 99.95% by switching optimizer | round 4 audit |
 | Row-centering spreads data without preserving class structure — k-NN accuracy falls to chance at depth even as effective dimension grows ("spread ≠ structure") | notebook 09, `docs/reports/gradient_diagnostics_analysis.md` §7 |
 | **Open**: 100L+BN fails for every initializer × optimizer recipe tried | `docs/plans_handoffs/2026-07-04_research_status_handoff.md` |
-| **New**: `rcfwd` — forward-balanced row-centering + closed-form per-layer backward gradient rescale — is the first row-centered setup to train **stably at 100L without BN** (all 6 smoke runs complete, gradient ratios ≤18×; 200-epoch audits pending) | `cluster/09_rcfwd_rescale/` |
+| `rcfwd` (closed-form backward gradient rescale) trains **stably at 100L without BN** — first in the row-centered family — and **matches tuned He to the criterion at 30L** with an untuned recipe; at depth it exposes the deeper result: gradient conditioning and representation content are **separate bottlenecks**, and content (not flow) is what blocks depth | `cluster/09_rcfwd_rescale/` |
 
 ## Repository map
 

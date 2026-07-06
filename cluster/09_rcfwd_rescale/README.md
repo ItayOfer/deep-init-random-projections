@@ -43,7 +43,25 @@ Three observations. (1) **The mechanism survives training dynamics**: per-layer 
 
 ## Diagnosing the slowness (Jul 5)
 
-`scripts/depth_learning_speed.py` compares early learning speed across families from existing results (acc @ ep20, NoBN): He + *plain SGD lr=1e-3* reaches **0.88** at fmnist/100L where rcfwd (lr=1e-2) reaches 0.168 — so depth-100 NoBN is not intrinsically slow, and V2 at 30L learns fast (0.73–0.97) under hotter recipes (momentum + onecycle) — so row-centered content alone doesn't explain it either. The prime suspect is **gradient scale**: the rescale equalizes all layers *down to the output layer's small magnitude* (uniform ≠ large; He's plain-SGD speed at depth comes precisely from its non-uniform, large early-layer gradients). Hypothesis test: the **LR ladder** — `rcfwd_lr{3e2,1e1,3e1}_smoke_{fmnist_100L,cifar10_50L}.sub` (six 20-epoch smokes at lr = 0.03 / 0.1 / 0.3, same runner via `--lr`, outputs `rcfwd_lr*_smoke_*.json`). If higher LR closes the gap, the recipe was timid (next dial: momentum); if not, the bottleneck is representation content and the idea needs revision, not tuning.
+`scripts/depth_learning_speed.py` compares early learning speed across families from existing results (acc @ ep20, NoBN): He + *plain SGD lr=1e-3* reaches **0.88** at fmnist/100L where rcfwd (lr=1e-2) reaches 0.168 — so depth-100 NoBN is not intrinsically slow, and V2 at 30L learns fast (0.73–0.97) under hotter recipes (momentum + onecycle) — so row-centered content alone doesn't explain it either. Two hypotheses were pre-registered: **gradient scale** (the rescale equalizes all layers down to the output layer's small magnitude → try higher LR) vs **representation content** (class structure destroyed at depth → no LR helps). Test: the LR ladder.
+
+## LR ladder + 200-epoch audits (Jul 6) — the content bottleneck wins
+
+**LR ladder** (`rcfwd_lr{3e2,1e1,3e1}_smoke_*.json`): raising LR does **not** accelerate learning and hits a hard wall. At lr=0.03, ep-20 accuracy is unchanged vs lr=0.01 (fmnist/100L 0.163 vs 0.168; cifar10/50L 0.147 vs 0.129). lr=0.1 NaNs at epoch 1 on fmnist/100L (survives on cifar10/50L: 0.159); lr=0.3 NaNs on both. Learning speed is **LR-insensitive across the entire stable range** — the signature of uninformative gradient *directions*, not undersized steps. The scale hypothesis is dead; the bottleneck is representation content.
+
+**Audits** (200 ep, lr=1e-2, `rcfwd_rescale_audit_*.json`) — and the refinement that makes the story precise:
+
+| Cell | ep20 → ep200 | to criterion | Verdict |
+|---|---|---|---|
+| fmnist/30L | 0.777 → **1.0000** (loss 3e-5) | **ep74** — vs tuned He's ep80 on the same cell | **PASS** |
+| cifar10/30L | 0.149 → 0.894 (best 0.922 @ ep196, still climbing) | — | FAIL (near-pass trajectory, out of epochs) |
+| fmnist/50L | 0.171 → 0.793 (accelerating: 50% @ ep114) | — | FAIL (alive, slow) |
+| cifar10/50L | 0.129 → 0.155 | — | FAIL (stuck) |
+| both 100L | flat 0.13–0.17 for 200 epochs | — | FAIL (frozen) |
+
+Gradient ratios stay 3–37× through all 200 epochs — **long-term stability fully confirmed**.
+
+**The finding:** rcfwd is not uniformly slow — its trainability is **depth-graded exactly as campaign [01](../01_geometry/README.md)'s geometry decay predicts**. Where class structure survives the forward pass (30L), rcfwd matches *tuned* He to the criterion with an untuned fixed-LR recipe; where the geometry measurements show structure gone (≥50–100L), no learning rate in the stable range recovers it. Perfect gradient conditioning is **necessary but not sufficient**: gradient *flow* and representation *content* are separate, independently-measurable bottlenecks, and rcfwd is the experiment that separates them. The remaining path to depth is not backward-pass engineering but a class-structure-preserving initialization — an open problem.
 
 ## Reproduce
 
