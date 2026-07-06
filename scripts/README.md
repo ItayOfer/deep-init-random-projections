@@ -26,6 +26,7 @@ Figures land in `reports/figures/gain_funnels/` and `reports/figures/rcfwd_resca
 | Script | Shows |
 |---|---|
 | `depth_learning_speed.py` | Early learning speed vs depth (acc @ ep20, epochs-to-50%) for He / V2 / rcfwd from existing result JSONs → `reports/figures/rcfwd_rescale/learning_speed_vs_depth.png` |
+| `rcfwd_campaign_summary.py` | The campaign-09 verdict in one 4-panel figure (audit curves, LR ladder, rcfwd-vs-tuned-He at 30L) → `rcfwd_campaign_summary.png` (copy embedded from `docs/figures/`) |
 
 ## Depth / gradient diagnostics
 
