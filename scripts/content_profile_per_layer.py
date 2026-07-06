@@ -32,6 +32,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
 
 from rp_study.data import get_data_loader
 from rp_study.projections import multi_layer_rp_with_init
@@ -39,8 +40,17 @@ from rp_study.projections import multi_layer_rp_with_init
 SEED = 42
 N = 2000
 WIDTH = 500  # matches every rcfwd training run
+K = 10
 LAYERS = [1, 2, 3, 5, 8, 12, 16, 20, 25, 30, 40, 50, 70, 100]
 STRATEGIES = ["he", "row_centered_forward_balanced"]
+
+
+def cosine_knn_acc(X, y):
+    # cosine metric: scale-invariant — Euclidean k-NN is blind on row-centered
+    # representations (per-sample scale variation destroys neighborhoods)
+    Xn = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12)
+    Xtr, Xte, ytr, yte = train_test_split(Xn, y, test_size=0.25, random_state=SEED, stratify=y)
+    return KNeighborsClassifier(n_neighbors=K, metric="cosine").fit(Xtr, ytr).score(Xte, yte)
 
 
 def linear_probe_acc(X, y):
@@ -59,10 +69,11 @@ for dataset in ["fashion_mnist", "cifar10"]:
             np.random.seed(SEED)
             torch.manual_seed(SEED)
             Xp = multi_layer_rp_with_init(X, l, init_strategy=strategy, width=WIDTH, seed=SEED)
-            acc = float(linear_probe_acc(Xp, y))
+            knn = float(cosine_knn_acc(Xp, y))
+            lin = float(linear_probe_acc(Xp, y))
             rows.append({"dataset": dataset, "init_strategy": strategy, "layer": l,
-                         "width": WIDTH, "linear_probe_accuracy": acc})
-            print(f"{dataset:14} {strategy:>30} l={l:>3}  linear={acc:.3f}", flush=True)
+                         "width": WIDTH, "cosine_knn_accuracy": knn, "linear_probe_accuracy": lin})
+            print(f"{dataset:14} {strategy:>30} l={l:>3}  cos-kNN={knn:.3f}  linear={lin:.3f}", flush=True)
 
 out = ROOT / "reports/results/content_profile_per_layer.json"
 out.write_text(json.dumps(rows, indent=2))
@@ -72,7 +83,7 @@ COLOR = {"he": "#4363d8", "row_centered_forward_balanced": "#2a9d3a"}
 LBL = {"he": "He", "row_centered_forward_balanced": "rcfwd init (row-centered fwd-balanced)"}
 for ax, ds in zip(axes, ["fashion_mnist", "cifar10"]):
     for s in STRATEGIES:
-        pts = [(r["layer"], r["linear_probe_accuracy"]) for r in rows
+        pts = [(r["layer"], r["cosine_knn_accuracy"]) for r in rows
                if r["dataset"] == ds and r["init_strategy"] == s]
         ax.plot(*zip(*pts), marker="o", ms=4, color=COLOR[s], label=LBL[s])
     ax.axhline(0.1, color="gray", ls=":", lw=1)
@@ -83,10 +94,11 @@ for ax, ds in zip(axes, ["fashion_mnist", "cifar10"]):
     ax.set_xticks([1, 3, 10, 30, 100])
     ax.set_xticklabels(["1", "3", "10", "30", "100"])
     ax.set_xlabel("layer index (log)")
-    ax.set_title(f"{ds} — linear-probe accuracy vs layer (init, width 500)")
-axes[0].set_ylabel("linear probe accuracy")
+    ax.set_title(ds)
+axes[0].set_ylabel(f"cosine k-NN accuracy (k={K})")
 axes[0].legend(fontsize=8.5, loc="upper right")
-fig.tight_layout()
+fig.suptitle(f"Class structure vs depth at initialization — cosine k-NN (k={K}), width 500", fontsize=12)
+fig.tight_layout(rect=(0, 0, 1, 0.94))
 figout = ROOT / "reports/figures/rcfwd_rescale/content_profile_per_layer.png"
 fig.savefig(figout, dpi=130)
 print(f"saved {out.relative_to(ROOT)} and {figout.relative_to(ROOT)}")

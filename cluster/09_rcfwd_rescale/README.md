@@ -79,7 +79,7 @@ Three rounds of init-time probes, each sharpening (and once *refuting*) the stor
 
 ![Per-layer content profile at init](../../docs/figures/content_profile_per_layer.png)
 
-On fmnist, rcfwd matches He through layers 1–5 (0.79–0.81 both), then collapses: 0.51 @ ℓ=12, 0.30 @ 16, 0.20 @ 20, chance by ℓ≈25. He glides down slowly and is still above chance at ℓ=100. The knee sits where the theory says it should: the class-correlated signal decays like r^ℓ = 0.826^ℓ (≈0.10 at ℓ=12) while forward-balancing holds the *total* RMS flat — so the SNR, not the scale, dies.
+On fmnist (cosine k-NN, k=10 — scale-invariant; the linear probe in the same JSON draws the same curve within ~0.03 everywhere), rcfwd matches He through layers 1–3 (0.79–0.81 both), then collapses: 0.53 @ ℓ=12, 0.32 @ 16, 0.16 @ 20, chance from ℓ≈25 on. He glides down slowly — 0.52 @ 30, 0.36 @ 50, still 0.17 @ ℓ=100. The knee sits where the theory says it should: the class-correlated signal decays like r^ℓ = 0.826^ℓ (≈0.10 at ℓ=12) while forward-balancing holds the *total* RMS flat — so the SNR, not the scale, dies.
 
 3. **The refined mechanism — noise-tail length.** Every rcfwd net starts with the same ~20-layer informative prefix; what grows with network depth is the tail of dead layers between that prefix and the loss:
 
