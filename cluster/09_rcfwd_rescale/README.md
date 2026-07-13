@@ -4,6 +4,27 @@
 
 **Builds on.** The whole arc: geometry says row-centering needs depth ([01](../01_geometry/README.md)); V2 hit a variance-overflow ceiling trying to fix the gradient ratio *inside the weights* ([06](../06_v2_row_centered/README.md), [07](../07_v2_eta_nobn/README.md)); the low-LR probe showed conditioning, not step size, is what blocks depth ([08](../08_he_lowlr_probe/README.md)). rcfwd moves the fix *outside* the weights, into the backward pass itself.
 
+## The three requirements (the frame for the whole thesis)
+
+Training a deep network from a fixed initialization needs **three** independent properties to hold *through depth*. Much of the confusion in this project came from treating them as one; this campaign is the experiment that pulls them apart.
+
+| # | Requirement | What fails without it | Measured by |
+|---|---|---|---|
+| **(i)** | **Avoid geometric collapse** — the forward map must not send all inputs to a single direction / low-rank subspace | He compresses angles → 0 (arc-cosine kernel); effective dim → ~14 at depth | effective dimension, angle statistics ([01](../01_geometry/README.md)) |
+| **(ii)** | **Gradient stability** — the backward map must keep per-layer gradient magnitudes comparable, so a single LR fits all layers | uncorrected row-centering: backward gain 1/r ≈ 1.21 compounds to ~10⁸; V2 overflows float32 | per-layer gradient-norm ratio `max_l/min_l ‖∂C/∂W^l‖` |
+| **(iii)** | **Preserve class content** — the forward map must keep label-relevant structure alive, not just *any* structure | row-centering spreads into isotropic noise: k-NN → chance by ℓ≈25 (**"spread ≠ structure"**) | k-NN / linear probe on the representations at init |
+
+The subtlety this campaign nails: **(i) and (iii) are not the same thing.** Avoiding rank collapse (i) is easy for row-centering — it spreads into ~950 effective dimensions. But that spread destroys (iii): the dimensions it fills are noise, not class structure. And **(ii) is independent of both** — rcfwd achieves (ii) perfectly while (iii) stays broken.
+
+The 2×2 below shows all four combinations the program has actually produced. Read it as: *conditioning (ii) and content (i+iii) are orthogonal axes, and content is the binding constraint at depth.*
+
+|  | **content ✓** (class structure survives) | **content ✗** (structure gone) |
+|---|---|---|
+| **conditioning ✓** (grads well-scaled) | **He / 30L** — trains fast | **rcfwd / 100L** — *stable but frozen* ← this campaign |
+| **conditioning ✗** (grads ill-scaled) | **He / 100L NoBN** — Adam dies, plain SGD rescues (optimizer-fixable) | **V2 / 100L** — NaN at epoch 1 |
+
+The email diagnosis ("resolved collapse but couldn't stabilize gradients") pairs the wrong cells: rcfwd is the **top-right** cell — gradients *are* stabilized (ii ✓); what's missing is content (iii ✗). No backward-pass fix can supply information the forward pass no longer carries.
+
 ## The mechanism, validated at init
 
 Without rescale — forward flat, backward explodes ~10⁸× (measured: rms(δ) ratio 1.39×10⁸ fmnist / 1.44×10⁸ cifar10 at 100L):
@@ -65,7 +86,7 @@ Three observations. (1) **The mechanism survives training dynamics**: per-layer 
 
 Gradient ratios stay 3–37× through all 200 epochs — **long-term stability fully confirmed**.
 
-**Terminology.** *Conditioning* = the backward-pass scale structure: the per-layer gradient-norm ratio `max_l/min_l ‖∂C/∂W^l‖` (from BP4, governed by the per-layer forward/backward gains, compounding as r^L). Bad conditioning means no global LR fits all layers; it says nothing about gradient *direction*. *Content* = the forward-pass information structure at init: how much class-relevant input structure survives in `a^L(x)`, measured label-free by k-NN accuracy / distance correlation / effective dimension on the representations (equivalently: how much the induced kernel `k_L(x,x′)` still varies with input similarity). The program populates all four cells of the 2×2: He/30L (content ✓ conditioning ✓ → fast), He/100L NoBN (content ✓ conditioning ✗ → optimizer-fixable), **rcfwd/100L (content ✗ conditioning ✓ → stable but frozen)**, V2/100L (both ✗ → NaN at epoch 1).
+**Terminology** (see the three-requirements frame above). *Conditioning* = requirement (ii), the backward-pass scale structure: the per-layer gradient-norm ratio `max_l/min_l ‖∂C/∂W^l‖` (from BP4, governed by the per-layer forward/backward gains, compounding as r^L). Bad conditioning means no global LR fits all layers; it says nothing about gradient *direction*. *Content* = requirement (iii), the forward-pass information structure at init: how much class-relevant input structure survives in `a^L(x)`, measured label-free by k-NN / linear probe on the representations (equivalently: how much the induced kernel `k_L(x,x′)` still varies with input similarity). The 2×2 above places every result: rcfwd/100L is content ✗ / conditioning ✓ — **stable but frozen**.
 
 **The finding:** rcfwd is not uniformly slow — its trainability is depth-graded. Perfect gradient conditioning is **necessary but not sufficient**: gradient *flow* and representation *content* are separate, independently-measurable bottlenecks, and rcfwd is the experiment that separates them.
 
