@@ -23,8 +23,6 @@ The 2×2 below shows all four combinations the program has actually produced. Re
 | **conditioning ✓** (grads well-scaled) | **He / 30L** — trains fast | **rcfwd / 100L** — *stable but frozen* ← this campaign |
 | **conditioning ✗** (grads ill-scaled) | **He / 100L NoBN** — Adam dies, plain SGD rescues (optimizer-fixable) | **V2 / 100L** — NaN at epoch 1 |
 
-The email diagnosis ("resolved collapse but couldn't stabilize gradients") pairs the wrong cells: rcfwd is the **top-right** cell — gradients *are* stabilized (ii ✓); what's missing is content (iii ✗). No backward-pass fix can supply information the forward pass no longer carries.
-
 ## The mechanism, validated at init
 
 Without rescale — forward flat, backward explodes ~10⁸× (measured: rms(δ) ratio 1.39×10⁸ fmnist / 1.44×10⁸ cifar10 at 100L):
