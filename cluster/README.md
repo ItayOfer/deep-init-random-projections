@@ -22,6 +22,7 @@ Daily workflow lives in `WORKFLOW.md`. Campaigns are organized in **chronologica
 | 07 | [`07_v2_eta_nobn/`](07_v2_eta_nobn/README.md) | May 25 | V2 NoBN with per-architecture η\* (gradient-ratio minimizing) + lr1e-6 probes | Confirmed V2 depth ceiling; no η rescues L=100 |
 | 08 | [`08_he_lowlr_probe/`](08_he_lowlr_probe/README.md) | May 25 | He + plain SGD at ultra-low LR on 100L/BN (mechanism probe) | Survives numerically, frozen at chance |
 | 09 | [`09_rcfwd_rescale/`](09_rcfwd_rescale/README.md) | May 25 | rcfwd: `row_centered_forward_balanced` init + per-layer backward gradient rescale (`grad_rescale=r`) | Stable at all depths (first row-centered 100L NoBN survivor); **fmnist/30L PASS @ ep74** (tuned He: ep80); ≥50L blocked by representation content, not gradient flow (LR-ladder-verified) |
+| 10 | [`10_rc_frozen_ends/`](10_rc_frozen_ends/README.md) | Jul 17 | 100L `row_centered_he`, train only last3 (fc99,fc100,head) vs only first3 (fc1,fc2,fc3) — everything else frozen | Pending (briefed, freeze mechanics verified locally, cluster jobs not yet submitted) |
 
 ### Campaign details
 
@@ -56,6 +57,8 @@ Daily workflow lives in `WORKFLOW.md`. Campaigns are organized in **chronologica
 **08_he_lowlr_probe** — `run_he_sgd_lowlr_smoke.py`, `run_he_sgd_lowlr2_smoke.py`; 4 subs on {cifar10,fmnist}×100L/BN.
 
 **09_rcfwd_rescale** — `run_rcfwd_gradrescale.py`; 12 subs ({smoke,audit} × {cifar10,fmnist} × {30,50,100}L, NoBN, plain SGD). Uses the `grad_rescale` config field + `_GradRescale` autograd op in `src/rp_study/models/classifiers.py`. Validated at initialization (`reports/figures/rcfwd_rescale/`, curated copies in `docs/figures/`); smoke jobs first submitted 2026-07-04.
+
+**10_rc_frozen_ends** — `run_rc_frozen_ends.py`; 8 subs ({first3,last3} × {smoke,audit} × {cifar10,fmnist}, 100L, NoBN, plain SGD, `row_centered_he`). Uses the new `ClassifierConfig.trainable_layers` field + `DeepFCClassifier._freeze_except` in `src/rp_study/models/classifiers.py` (`requires_grad=False` on frozen Linear params; backprop still traverses frozen layers). Branch `work/rc-frozen-ends`.
 
 ## Infrastructure (this directory's root)
 
