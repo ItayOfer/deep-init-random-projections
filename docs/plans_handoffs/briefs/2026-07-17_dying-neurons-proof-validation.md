@@ -31,4 +31,34 @@ Validation report exists with a verdict for every numbered step of both PDFs' ar
 
 ## Outcome  *(filled by the worker at the end)*
 
-—
+**Done 2026-07-17.** Deliverables in `docs/scratch/proofs/` (gitignored): `validation_report.md` (full report)
+and `chi_rate_check.py` (deliverable-3 numeric, re-runnable).
+
+**Verdict:** the boxed result `P[dead] ∈ [½(1−(N choose 2)Δ_ℓ), ½] → ½` is **correct**, subject to a
+limit-order restatement and one honest caveat. All arithmetic (moment identities §3, arc-cosine kernel,
+Sheppard orthant formula, the ½·P(A) collapse) is correct; the gaps are structural.
+
+**Both registered suspects confirmed:**
+- **(a) expectation-vs-realization — GAP, central.** `E[ρ^(ℓ)] = χ(ρ^(ℓ−1))` puts a number on the left and a
+  random variable on the right; Theorem 1 only proves the *conditional* statement `E[ρ^(ℓ)|h^(ℓ−1)] →
+  χ(ρ^(ℓ−1))`. The unconditional recursion is `E[ρ^(ℓ)]=E[χ(ρ^(ℓ−1))] ≠ χ(E[ρ^(ℓ−1)])` (Jensen gap). Fix:
+  infinite-width-per-layer induction (standard mean-field / Poole–Daniely–Schoenholz) makes ρ^(ℓ) deterministic
+  per layer, killing the Jensen gap and fixing the order of limits (n→∞ then ℓ→∞). Written up in report §A.
+- **(b) no rate — supplied.** χ′(1)=1 ⇒ algebraic convergence. Derived (not guessed): `1−χ(ρ) = (1−ρ) −
+  (2√2/3π)(1−ρ)^{3/2} + O((1−ρ)²)` ⇒ `ε_ℓ = 1−ρ_ℓ ≈ (9π²/2)/ℓ² ≈ 44.41/ℓ²` and `Δ_ℓ ≈ 3/ℓ`, giving the
+  explicit `P[dead] ∈ [½(1−3N(N−1)/(2ℓ)), ½]`. Numerically confirmed for four ρ₀ (constant is
+  init-independent). Report §B.
+
+**Bonus finds worth the advisor's attention:**
+- The "ASK Ido" step (G5) **is valid but for the wrong reason**: `P[dead]=½P(A)` holds *exactly* because
+  `A₋⊆A` and `w↦−w` symmetry, not because "P(Aᶜ)→0". Replace the justification.
+- **Practical caveat:** the lower bound is non-vacuous only for depth `ℓ ≳ (3/2)N(N−1) = Θ(N²)` — vacuous for
+  real datasets; the Θ(N²) is a loose union bound. Frame as an asymptotic-in-depth, fixed-N existence result.
+- **Consistency (§E):** the ≈50%-flat ReLU-survival evidence in ch3 is *blind* to dataset-level death (both
+  collapsed and non-collapsed regimes give ≈50% average firing), so it neither supports nor refutes the proof.
+  The right empirical probe is the per-neuron *across-dataset* dead fraction — proposed as a cheap bonus
+  experiment (§F): predicts He's dataset-dead fraction rises with depth while row-centered stays low.
+
+Also flagged: broken `[?]` citation (§3.2), unused "ratio of expectations" clause with a UI gap (delete),
+and two notation overloads (`σ` = ReLU vs std-dev; `X` = vector vs coordinate) to fix before manuscript entry.
+Ranked fix list in report §G. No manuscript edits made (per constraint) — that is the next brief after review.
