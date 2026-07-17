@@ -21,8 +21,8 @@ The 12-architecture program is resolved and documented: He 10/12 (100L+BN open w
 
 | ID | Workstream | Status | Next action | Entry points |
 |---|---|---|---|---|
-| W1 | **Campaign 10 — new experiments** (scope from advisor meeting) | awaiting experiment list | Oracle + user write the brief from the advisor's list, then follow the campaign checklist in `CLAUDE.md` | `cluster/README.md`, exemplar: `cluster/09_rcfwd_rescale/` |
-| W2 | **Dying-neurons proof** — P[dead on dataset] → ½ with depth | draft exists (Overleaf is source of truth; PDF snapshot: `docs/scratch/proofs/`); details to come | User brings the Overleaf source/details; then a proof brief | `thesis/chapters/ch3_gradient_trap.tex` (half-Gaussian lemma, ~50% survival measurement), `docs/reports/gradient_diagnostics_analysis.md` §4 |
+| W1 | **Campaign 10 — rc frozen ends** (100L `row_centered_he`; train only last-3 vs only first-3 layers) | **briefed — ready to spin up** | Worker executes [`briefs/2026-07-17_campaign10-rc-frozen-ends.md`](briefs/2026-07-17_campaign10-rc-frozen-ends.md) on branch `work/rc-frozen-ends` | The brief; exemplar `cluster/09_rcfwd_rescale/`; checklist in `CLAUDE.md` |
+| W2 | **Dying-neurons proof validation** — P[dead on dataset] → ½ with depth; advisor asked to fix + add bounds | **briefed — ready to spin up** | Worker executes [`briefs/2026-07-17_dying-neurons-proof-validation.md`](briefs/2026-07-17_dying-neurons-proof-validation.md) (top-tier model; output stays in `docs/scratch/proofs/`) | The brief; PDFs in `docs/scratch/proofs/`; `thesis/chapters/ch3_gradient_trap.tex` |
 | W3 | Content-preserving init screen (α-family) | parked, ready | Run `scripts/content_profile_per_layer.py` over `partial_centered_he` α-grid; candidates must beat rcfwd's ℓ\*≈25 decay | `cluster/09_rcfwd_rescale/README.md` §content probes |
 | W4 | cifar10/30L rcfwd audit extension | parked, cheap | Extend past 200 ep (was 0.92 and climbing) for the second PASS | `cluster/09_rcfwd_rescale/` |
 
