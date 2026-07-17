@@ -6,7 +6,7 @@ The narrative layer of the thesis repo. Start with **[RESEARCH_LOG.md](RESEARCH_
 |---|---|
 | [`milestones/`](milestones/) | Date-stamped technical walkthroughs written *at the time* — currently the product-balanced (V1) derivation walkthrough (2026-04-13). Historical records — preserved as written. |
 | [`reports/`](reports/) | Analysis reports: `gradient_diagnostics_analysis.md` (the forward/backward gain asymmetry theory + measurements), the diagnostic phase reports (`diagnostic_phase{1,2,3}_report.html`), the full audit report (`final_report.html`), and the sweep scorecard (`sweep_results_table.{md,pdf}`). |
-| [`plans_handoffs/`](plans_handoffs/) | Status handoffs and run logs: the research status handoff (2026-07-04 — the most current statement of where things stand) and the simulation run log. |
+| [`plans_handoffs/`](plans_handoffs/) | **[FRONTIER.md](plans_handoffs/FRONTIER.md) — the always-current hub: open workstreams, the agentic cycle, and where to start any new task.** Also: task briefs (`briefs/`), the research status handoff (2026-07-04), and the simulation run log. |
 | [`figures/`](figures/) | The **curated** figure set (~15 images) embedded by the campaign READMEs under `cluster/`. The full figure collection lives in `reports/figures/` (local-only). |
 | `scratch/` | Session working notes — gitignored, local-only. Includes `readme_fact_sheets/`: the verified per-campaign fact sheets (with source-file provenance for every number) from which the campaign READMEs were written. |
 

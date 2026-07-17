@@ -16,7 +16,28 @@ You are NOT a code monkey. You should understand *why* each initializer is desig
 See [CONTEXT.md](CONTEXT.md) for the thesis problem statement.
 See [docs/RESEARCH_LOG.md](docs/RESEARCH_LOG.md) for the chronological narrative and current state.
 See [INITIALIZERS.md](INITIALIZERS.md) for mathematical definitions of every initialization strategy.
-See [docs/plans_handoffs/](docs/plans_handoffs/) for the latest status handoff.
+See **[docs/plans_handoffs/FRONTIER.md](docs/plans_handoffs/FRONTIER.md)** for what is open and in flight RIGHT NOW — read it before starting any task.
+
+## The Agentic Cycle (how tasks are spun up and closed)
+
+Every substantive task runs the same loop — defined in full in `FRONTIER.md` §"The agentic cycle":
+**brief → spin up → isolate → work → report back → oracle verifies & closes.**
+
+- Task briefs live in `docs/plans_handoffs/briefs/` (template there). A brief + the onboarding chain must be sufficient for a fresh agent with no conversation history.
+- Additive work (new campaign dir, new results, new notes) → `main`. Anything touching shared files (`src/`, existing docs/notebooks) → branch `work/<slug>`.
+- On finishing: fill the brief's Outcome section, update the task's README and the FRONTIER row, commit. Every claimed number must trace to a file in `reports/results/`.
+
+### Starting a new campaign (checklist)
+
+1. `mkdir cluster/<NN>_<slug>/` (next number; chronological). Copy `cluster/09_rcfwd_rescale/run_rcfwd_gradrescale.py` as the skeleton — it carries the required idioms: `ROOT = Path(__file__).resolve().parents[2]`, `sys.path.insert` for `src` **and** `cluster/03_he_diagnostics` (shared `_result_to_payload`/`print_diagnostic_summary`), the `ARCH` dict, `--experiment/--seed/--device/--output/--lr` argparse, abort-on-explosion, and the no-clipping assert.
+2. One `.sub` per job, copied from a 09 sub: **job name = experiment label = JSON filename stem**; body runs `python -u cluster/<NN>_<slug>/run_X.py --experiment <label> ... --output reports/results/<label>.json`; keep the SBATCH block (dlc partition, `--exclude=dgx01,dgx04`, `%x-%j.out`).
+3. Smoke first (20 ep, `diagnostics_every=1`), gate audits (200 ep) on smoke triage.
+4. Write the campaign `README.md` from the standard shape: Question / Builds on / What ran / Findings (numbers ← JSONs) / Reproduce / Evidence & gaps. Add the campaign row in `cluster/README.md` and, when results land, in `reports/results/INDEX.md`.
+5. Loop: `bash cluster/sync_to_cluster.sh` → (cluster) clear `__pycache__` → `sbatch` → (local) `bash cluster/pull_results.sh '<label-glob>' <NN>_<slug>` → commit JSONs + docs → update FRONTIER.
+
+### Working on proofs / the manuscript
+
+The LaTeX manuscript is `thesis/main.tex` (chapters in `thesis/chapters/`; theorem/lemma envs and macros `\E \Var \Cov \relu \diag` defined in the preamble — reuse them, don't redefine). Derivations often mature in `docs/reports/*.md` first, then get formalized into a chapter. Key existing results to cite rather than re-prove: half-Gaussian moments + centering ratio (ch3 / `gradient_diagnostics_analysis.md` §4), the gain-coupling lock, the product-balanced variance (INITIALIZERS.md items 14–18). Draft proofs not ready for the public repo stay in `docs/scratch/proofs/` (gitignored).
 
 ## Codebase Layout
 
