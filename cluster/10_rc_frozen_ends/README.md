@@ -11,7 +11,7 @@
 
 ## What ran
 
-`run_rc_frozen_ends.py` — deliberately minimal so freezing-location is the only variable: init `row_centered_he`, NoBN, width 500, depth 100, plain SGD lr 1e-2 (mom 0, wd 0, fixed LR), bs 256, seed 42, no clipping (assert-enforced), normalize inputs. Matrix: 2 conditions (`first3`, `last3`) × 2 datasets (`fmnist`, `cifar10`) × {smoke 20 ep, audit 200 ep} = 8 subs. Smoke logs per-layer gradients every epoch (`diagnostics_every=1`, `log_grad_per_layer=True`).
+`run_rc_frozen_ends.py` — deliberately minimal so freezing-location (and, in the second pass, recipe) is the only variable: NoBN, width 500, depth 100, plain SGD lr 1e-2 (mom 0, wd 0, fixed LR), bs 256, seed 42, no clipping (assert-enforced), normalize inputs. Two recipes: `raw` (`row_centered_he`, no `grad_rescale` — the original pass) and `rcfwd` (`row_centered_forward_balanced` + `grad_rescale=r≈0.826`, campaign 09's exact corrected recipe — see §H1 vs H2 below). Matrix: 2 conditions (`first3`, `last3`) × 2 datasets (`fmnist`, `cifar10`) × 2 recipes (`raw`, `rcfwd`) × {smoke 20 ep, audit 200 ep} = 16 subs. Smoke logs per-layer gradients every epoch (`diagnostics_every=1`, `log_grad_per_layer=True`).
 
 Freezing implementation: `ClassifierConfig.trainable_layers` ([config.py](../../src/rp_study/config.py)) — additive, default `None` (no behavior change to any existing experiment) — applied in `DeepFCClassifier._freeze_except` ([classifiers.py](../../src/rp_study/models/classifiers.py)) as `requires_grad=False` on the frozen Linear layers' weight/bias tensors. This does **not** use `torch.no_grad()` or detach activations, so backprop still runs through frozen layers unchanged — gradients keep flowing to earlier trainable layers via the input-grad path.
 
@@ -53,24 +53,42 @@ Dry-run scripts are not committed (scratch); the assertions above are now load-b
 
 **Answering the campaign question:** neither entry point trains — signal cannot productively enter a 100L plain-row-centered net through either the last three layers (content + scale both dead there) or the first three (content and scale are fine, but 97 untrained frozen layers downstream absorb any change before it reaches the loss). This sharpens Phase 6/campaign-09's "content, not conditioning, is the bottleneck" finding: it is not merely that *forward-propagated* content is dead at depth — the network's *insensitivity* extends to gradient-driven changes made anywhere in it, front or back, as long as the vast majority of the stack stays frozen at this initialization.
 
+## H1 vs H2: does the raw-recipe failure indict the gradient rescale, or confirm content death?
+
+This campaign was partly motivated by a live disagreement about *why* campaign 09 (rcfwd) needed its `grad_rescale` correction at all. Campaign 09's `row_centered_forward_balanced` init keeps the **forward** activation RMS flat by construction, but that flatness forces the **backward** gain to compound at `1/r ≈ 1.21` per layer — over ~100 layers the raw, uncorrected gradient would blow up by roughly `1.21^97`. `grad_rescale=r` is a fixed, depth-known multiplier (via the `_GradRescale` op: identity forward, `× r` in the backward pass) that cancels this exactly — it is *not* adaptive gradient-norm clipping (which this project forbids for training instability in general), but it is still an artificial correction to the raw gradient, and that raised a genuine question:
+
+- **H1 (the advisor's worry):** the rescale might not just be conditioning the gradient's *scale* — by uniformly damping every layer's backward signal, it could be suppressing or redirecting a gradient that, left alone, points somewhere real and useful. Under H1, a much smaller-scope problem — training only 3 layers, where no whole-network rescale is even necessary — should be able to train fine on the **raw**, uncorrected init, since there's no long compounding chain for an artificial correction to distort.
+- **H2 (the standing campaign-09 finding):** the real bottleneck is that row-centered representation *content* dies (linear-probe accuracy at chance by layer ≈25, per campaign 09's probe chain) — a forward-propagation fact that has nothing to do with backward gradient conditioning. Under H2, training only 3 layers should fail too, regardless of whether any rescale is applied, because the trainable layers either sit on already-dead forward content (`last3`) or feed into a downstream stack that will destroy whatever they learn (`first3`).
+
+**The raw-recipe results above already discriminate against H1.** Neither failure mode is a gradient-direction/magnitude story: `last3` dies from forward-scale decay (`0.826^97`) reaching the head — a fact about the forward pass, present with or without any backward rescale. `first3`'s gradients are healthy and well-scaled (order 1–5, no correction needed, no rescale ever applied here) and *still* produce zero loss movement, because the 97 frozen downstream layers absorb the change. If H1 were the real story, `first3` in particular — no rescale in play, healthy gradients, full-content input — should have trained. It didn't.
+
+**Direct follow-up, run as part of this campaign (not a separate one):** the same `first3`/`last3` frozen-layer design, rerun with campaign 09's *exact* corrected recipe — `row_centered_forward_balanced` init + `grad_rescale=r=sqrt((π−1)/π)≈0.826` — instead of raw `row_centered_he`. This isolates the rescale as the only changed variable. Two clean, falsifiable predictions:
+
+- **If H1 is right:** the corrected recipe should let `last3` and/or `first3` train where the raw recipe didn't, because the "real" gradient is no longer being suppressed by depth-wide raw-gradient blowup dynamics that the frozen-3-layer raw setup never actually had in the first place.
+- **If H2 is right:** both conditions should still fail to train — `last3` should no longer show the exact-float32-zero underflow signature (the rescale keeps backward gain at unit scale by construction), but should still show flat/negligible progress; `first3` should look qualitatively identical to the raw pass (healthy gradients, zero progress) since the rescale doesn't touch the forward pass or the content-death mechanism at all.
+
+Local CPU dry runs (2 epochs, not conclusive, just a mechanics check) are consistent with H2 so far: under the corrected recipe, `last3`'s trainable-layer gradients are healthy (order 1.2–2.2, no underflow) rather than collapsing to zero, and `first3`'s loss does not stay pinned at `ln(10)` the way it does under the raw recipe — both expected under the rescale simply removing the raw-recipe's specific numerical failure signature, not the content-death mechanism itself. **Full 20-epoch smoke results pending** (4 new jobs: `rcfrozen_{first3,last3}_smoke_{fmnist,cifar10}_100L_rcfwd`, queued via the extended `run_rc_frozen_ends.py` — see Reproduce).
+
 ## Reproduce
 
 ```bash
 cd ~/thesis   # after sync; clear __pycache__ first (config.py gained a new field)
 for cond in first3 last3; do
   for ds in fmnist cifar10; do
-    sbatch cluster/10_rc_frozen_ends/rcfrozen_${cond}_smoke_${ds}_100L.sub   # 2h each
+    sbatch cluster/10_rc_frozen_ends/rcfrozen_${cond}_smoke_${ds}_100L.sub        # raw recipe, 2h each
+    sbatch cluster/10_rc_frozen_ends/rcfrozen_${cond}_smoke_${ds}_100L_rcfwd.sub  # rcfwd recipe, 2h each
   done
 done
 # gate audits (6h each) on smoke triage:
-# sbatch cluster/10_rc_frozen_ends/rcfrozen_<cond>_audit_<ds>_100L.sub
+# sbatch cluster/10_rc_frozen_ends/rcfrozen_<cond>_audit_<ds>_100L[_rcfwd].sub
 ```
 
 Pull back with `bash cluster/pull_results.sh 'rcfrozen_*_smoke_*' 10_rc_frozen_ends`. Logs end with `SUMMARY <label> | PASS/fail | ...`.
 
 ## Evidence & gaps
 
-- 4/8 jobs run and pulled: `rcfrozen_{first3,last3}_smoke_{fmnist,cifar10}_100L.json` in `reports/results/`, logs in `logs/slurm/10_rc_frozen_ends/`. All 4 completed cleanly (`status=completed`, `stop_reason=max_epochs`, no abort) with the trainable-tensor-count banner assert passing (`trainable tensors=6 (expect 6)`).
-- **Gap (by triage decision, not a blocker):** the 4 audit `.sub` files (200 ep) were not submitted — smoke showed zero epochs of progress in all four cells (see Findings), so promoting them was not evidence-justified per the brief's gating rule. Available to run on explicit advisor call.
+- 4/8 `raw`-recipe jobs run and pulled: `rcfrozen_{first3,last3}_smoke_{fmnist,cifar10}_100L.json` in `reports/results/`, logs in `logs/slurm/10_rc_frozen_ends/`. All 4 completed cleanly (`status=completed`, `stop_reason=max_epochs`, no abort) with the trainable-tensor-count banner assert passing (`trainable tensors=6 (expect 6)`).
+- **`rcfwd`-recipe follow-up (4 more smoke jobs) queued, not yet pulled** — `rcfrozen_{first3,last3}_smoke_{fmnist,cifar10}_100L_rcfwd.json`. Runner extension + local CPU mechanics check (2 epochs) done; cluster run pending. See §H1 vs H2 above.
+- **Gap (by triage decision, not a blocker):** the 8 audit `.sub` files (200 ep, both recipes) were not submitted — smoke showed zero epochs of progress in all four `raw` cells (see Findings), so promoting them was not evidence-justified per the brief's gating rule. Available to run on explicit advisor call; the `rcfwd` audits are worth reconsidering once the `rcfwd` smoke verdicts land, in case that recipe shows genuine (if slow) learning.
 - Cosmetic: the shared `print_diagnostic_summary` (from `cluster/03_he_diagnostics/run_diagnostic.py`) computes a min/max gradient-ratio banner assuming all layers are trainable; with most layers frozen (zero grad by construction) the printed ratio is a meaningless huge number (min=0 in the denominator) in the console log. Does not affect the saved JSON — only the printed console summary. Not fixed here since `run_diagnostic.py` is shared code outside this campaign's scope.
 - The `first3+head` asymmetry flagged above is unconfirmed with the advisor — worth raising given `first3`'s result: even with the head trainable in `last3`, the head's own gradient underflowed to zero, so a `first3+head` variant would very likely die the same way `last3` did (head input is equally scale-dead regardless of which earlier layers are trainable). Low priority follow-up.

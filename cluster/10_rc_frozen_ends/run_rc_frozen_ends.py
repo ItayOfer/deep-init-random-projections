@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""100L row_centered_he, train only 3 layers -- last3 (fc99,fc100,head) vs
+"""100L row-centered, train only 3 layers -- last3 (fc99,fc100,head) vs
 first3 (fc1,fc2,fc3) -- everything else frozen. Where can trainable signal
 enter a deep row-centered network?
 
@@ -18,19 +18,38 @@ still runs through frozen layers unchanged -- only their own parameter
 gradients are suppressed. Verified locally (CPU, 2 epochs) before this
 runner was ever synced to the cluster.
 
-Fixed knobs (minimal, so freezing-location is the only variable):
-  * init = row_centered_he (plain: He then row-center, no variance re-adjustment)
+Two RECIPES (added after the "raw" pass to discriminate two hypotheses for
+*why* rc-frozen-ends fails -- see cluster/10_rc_frozen_ends/README.md
+"H1 vs H2" section):
+  * "raw"   -- row_centered_he, no grad_rescale (the original pass). Backward
+              gain here is ~unit scale already (g_bwd~1.0); the failure modes
+              observed are forward-scale decay (last3) and content
+              absorption (first3), NOT gradient magnitude/direction.
+  * "rcfwd" -- row_centered_forward_balanced + grad_rescale=r=sqrt((pi-1)/pi)
+              (campaign 09's exact corrected recipe: flat forward, backward
+              gain compounding at 1/r~1.21/layer cancelled by the rescale).
+              If H1 (the rescale itself was masking a recoverable gradient)
+              were right, this corrected recipe should let last3/first3
+              train where the raw recipe didn't. If H2 (representation
+              content death, independent of gradient conditioning, is the
+              real bottleneck -- per campaign 09's own probe evidence) is
+              right, this should fail the same way, just without the
+              float32-underflow signature (gradients here are well-scaled
+              by construction).
+
+Fixed knobs (minimal, so freezing-location and recipe are the only variables):
   * NoBN, width 500, depth 100
   * optimizer = SGD, momentum 0, weight_decay 0, scheduler none (fixed LR)
   * lr = 1e-2, bs = 256, seed = 42
   * NO gradient clipping (assert-enforced)
 
-2 conditions x 2 datasets x {smoke 20 ep, audit 200 ep} = 8 jobs.
-Output: reports/results/rcfrozen_<condition>_<mode>_<dataset>_100L.json
+2 conditions x 2 datasets x 2 recipes x {smoke 20 ep, audit 200 ep} = 16 jobs.
+Output: reports/results/rcfrozen_<condition>_<mode>_<dataset>_100L[_rcfwd].json
 """
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import List, Tuple
@@ -44,10 +63,15 @@ from rp_study.experiments.supervised_training import run_supervised_experiment
 from rp_study.models.classifiers import build_classifier
 from run_diagnostic import _result_to_payload, print_diagnostic_summary
 
-INIT_STRATEGY = "row_centered_he"
 WIDTH = 500
 DEPTH = 100
 LEARNING_RATE = 1e-2
+R = math.sqrt((math.pi - 1.0) / math.pi)   # ~0.826 = 1/1.21, campaign-09's rescale
+
+RECIPES = {
+    "raw": {"init_strategy": "row_centered_he", "grad_rescale": None},
+    "rcfwd": {"init_strategy": "row_centered_forward_balanced", "grad_rescale": R},
+}
 
 TRAINABLE_LAYERS = {
     "first3": ["fc1", "fc2", "fc3"],
@@ -59,32 +83,38 @@ DATASETS = {
 }
 CONDITION_KEYS = list(TRAINABLE_LAYERS.keys())
 DATASET_KEYS = list(DATASETS.keys())
+RECIPE_SUFFIX = {"raw": "", "rcfwd": "_rcfwd"}
 EXPERIMENT_LABELS = [
-    f"rcfrozen_{cond}_{mode}_{ds}_100L"
+    f"rcfrozen_{cond}_{mode}_{ds}_100L{RECIPE_SUFFIX[recipe]}"
+    for recipe in RECIPES
     for cond in CONDITION_KEYS
     for mode in ("smoke", "audit")
     for ds in DATASET_KEYS
 ]
 
 
-def _parse_label(label: str) -> Tuple[str, str, str]:
-    # rcfrozen_<condition>_<mode>_<dataset>_100L
-    parts = label.split("_")
+def _parse_label(label: str) -> Tuple[str, str, str, str]:
+    # rcfrozen_<condition>_<mode>_<dataset>_100L[_rcfwd]
+    recipe = "rcfwd" if label.endswith("_rcfwd") else "raw"
+    core = label[: -len("_rcfwd")] if recipe == "rcfwd" else label
+    parts = core.split("_")
     assert parts[0] == "rcfrozen" and parts[-1] == "100L", label
     condition, mode, dataset = parts[1], parts[2], parts[3]
-    return condition, mode, dataset
+    return condition, mode, dataset, recipe
 
 
 def _build(label: str, epochs: int, log_per_batch_first_epoch: bool,
            log_grad_per_layer: bool, learning_rate: float) -> Tuple[ClassifierConfig, TrainingConfig]:
-    condition, mode, dataset_key = _parse_label(label)
+    condition, mode, dataset_key, recipe = _parse_label(label)
     dataset = DATASETS[dataset_key]
     trainable_layers = TRAINABLE_LAYERS[condition]
+    recipe_cfg = RECIPES[recipe]
 
     cc = ClassifierConfig(
-        architecture="fc", depth=DEPTH, init_strategy=INIT_STRATEGY,
+        architecture="fc", depth=DEPTH, init_strategy=recipe_cfg["init_strategy"],
         use_batch_norm=False, fc_hidden_dim=WIDTH,
         trainable_layers=trainable_layers,
+        grad_rescale=recipe_cfg["grad_rescale"],
     )
     tc = TrainingConfig(
         dataset=dataset, batch_size=256,
@@ -114,7 +144,7 @@ def main() -> None:
     args = parser.parse_args()
 
     label = args.experiment
-    condition, mode, dataset_key = _parse_label(label)
+    condition, mode, dataset_key, recipe = _parse_label(label)
     epochs = args.epochs if args.epochs is not None else (20 if mode == "smoke" else 200)
     log_per_batch = (mode == "smoke")
     log_grad_per_layer = (mode == "smoke")
@@ -143,8 +173,8 @@ def main() -> None:
     del banner_model
 
     print(f"\n{'#'*60}")
-    print(f"# {label}  (mode={mode}, condition={condition})")
-    print(f"# init={INIT_STRATEGY} (plain row-centered He, no variance re-adjustment)")
+    print(f"# {label}  (mode={mode}, condition={condition}, recipe={recipe})")
+    print(f"# init={classifier_config.init_strategy}  grad_rescale={classifier_config.grad_rescale}")
     print(f"# trainable_layers={classifier_config.trainable_layers}")
     print(f"# trainable tensors={n_trainable} (expect {expected_tensors} = "
           f"{expected_layers} layers x 2 [weight,bias])")
