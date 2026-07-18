@@ -39,3 +39,9 @@ Figures land in `reports/figures/gain_funnels/` and `reports/figures/rcfwd_resca
 | `bulge_under_lr1e6.py` | The same bulge measured under LR=1e-6 (campaign 07's lr1e6 probes) |
 
 Figures land in `reports/figures/v2_eta_nobn/`.
+
+## Frozen-layer entry-point diagnostics (feeds `cluster/10_rc_frozen_ends/`)
+
+| Script | Shows |
+|---|---|
+| `rc_frozen_ends_plots.py` | Campaign 10's two failure modes in one 4-panel figure: flat loss/accuracy in all 4 smoke cells; `last3` trainable-layer gradients underflowing to exact float32 zero vs. `first3` trainable-layer gradients staying healthy but causally inert → `reports/figures/rc_frozen_ends/rcfrozen_mechanisms.png` (copy embedded from `docs/figures/`) |

@@ -14,6 +14,7 @@ Every JSON here is the output of one cluster job (filename stem = SLURM job name
 | η sweep (local) | `eta_sweep_research.json`, `eta_star_recommended.json` | `scripts/eta_sweep_research.py`, `scripts/eta_sweep_pick.py` | May 25 | Gradient-ratio-minimizing η per architecture (input to campaign 07) |
 | He low-LR probe | `he_sgd_lowlr2_smoke_{cifar10,fmnist}_100L_bn.json` | `cluster/08_he_lowlr_probe/` | May 25 | He+SGD at ultra-low LR on 100L/BN: numerically stable but frozen at chance *(round-1 lowlr JSONs not retained)* |
 | rcfwd grad-rescale | `rcfwd_rescale_smoke_*.json` (6), `rcfwd_rescale_audit_*.json` (6), `rcfwd_lr*_smoke_*.json` (6) | `cluster/09_rcfwd_rescale/` | May 25 – Jul 6 | **First stable 100L NoBN row-centered training** (grad ratios ≤37× over 200 ep). Audits: fmnist/30L **PASS** @ ep74 (tuned He: ep80); cifar10/30L near-pass 0.92; ≥50L slow-to-frozen. LR ladder: speed LR-insensitive, NaN wall at 0.1–0.3 → bottleneck is representation content, not gradient scale |
+| rc frozen ends | `rcfrozen_{first3,last3}_smoke_{fmnist,cifar10}_100L.json` (4) | `cluster/10_rc_frozen_ends/` | Jul 17–18 | 100L `row_centered_he`, train only last3 (fc99,fc100,head) vs first3 (fc1,fc2,fc3), rest frozen. Both DEAD/STUCK at 20 ep: `last3` gradient underflows to exact float32 zero (head sits on `0.826^97`-scale signal); `first3` gradients stay healthy (order 1–5) but produce zero loss movement — absorbed by 97 frozen downstream layers. Neither entry point trains; audits not gated |
 
 ## Pass criterion
 
