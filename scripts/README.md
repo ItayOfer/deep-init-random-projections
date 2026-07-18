@@ -44,4 +44,5 @@ Figures land in `reports/figures/v2_eta_nobn/`.
 
 | Script | Shows |
 |---|---|
-| `rc_frozen_ends_plots.py` | Campaign 10's two failure modes in one 4-panel figure: flat loss/accuracy in all 4 smoke cells; `last3` trainable-layer gradients underflowing to exact float32 zero vs. `first3` trainable-layer gradients staying healthy but causally inert → `reports/figures/rc_frozen_ends/rcfrozen_mechanisms.png` (copy embedded from `docs/figures/`) |
+| `rc_frozen_ends_plots.py` | Campaign 10's two failure modes under the raw recipe, in one 4-panel figure: flat loss/accuracy in all 4 smoke cells; `last3` trainable-layer gradients underflowing to exact float32 zero vs. `first3` trainable-layer gradients staying healthy but causally inert → `reports/figures/rc_frozen_ends/rcfrozen_mechanisms.png` (copy embedded from `docs/figures/`) |
+| `rc_frozen_ends_rcfwd_plots.py` | The corrected-recipe follow-up: mechanisms figure (`last3` now learning, `first3`'s loss worsening past ln(10)) + the direct raw-vs-rcfwd accuracy comparison that resolves the H1-vs-H2 question → `rcfrozen_rcfwd_mechanisms.png`, `rcfrozen_recipe_comparison.png` |
