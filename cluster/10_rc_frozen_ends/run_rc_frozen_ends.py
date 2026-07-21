@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
-"""100L row-centered, train only 3 layers -- last3 (fc99,fc100,head) vs
-first3 (fc1,fc2,fc3) -- everything else frozen. Where can trainable signal
-enter a deep row-centered network?
+"""100L row-centered, train only 3 layers -- last3 (fc98,fc99,fc100) vs
+first3 (fc1,fc2,fc3) -- everything else, INCLUDING THE HEAD, frozen in both
+conditions. Where can trainable signal enter a deep row-centered network?
+
+Symmetric by design: the head (the final Linear(hidden_dim, num_classes)
+readout) is never part of either trainable window -- it is always the fixed
+lens the result is read through, in both conditions. This makes last3 and
+first3 a like-for-like comparison of "a 3-layer trainable window at one end
+of a 100-layer frozen stack" vs "at the other end", with nothing else
+differing. (An earlier draft of this runner trained fc99+fc100+head for
+last3 -- an asymmetric definition, since first3 never trained the head --
+corrected here; see cluster/10_rc_frozen_ends/README.md for the note on
+what changed and why.)
 
 Motivation: campaign 09 (rcfwd) showed row-centered representation content
 dies by layer ~25 (probe chain) while the backward gain is ~unit scale
 (g_bwd~1.0, uncorrected here -- this is plain row_centered_he, no GradRescale).
-Forward gain g_fwd~0.826 per layer means the head sits on a signal shrunk by
-~0.826^97 ~ 1e-8. This campaign surgically tests the two entry points:
-does gradient reach a trainable head sitting on dead/vanishing content
-(last3), or trainable early layers whose output must still survive 97
-frozen scrambling layers forward (first3)?
+Forward gain g_fwd~0.826 per layer means the tail of the network sits on a
+signal shrunk by ~0.826^97 ~ 1e-8. This campaign surgically tests the two
+entry points: does gradient reach a trainable window sitting on dead/
+vanishing content (last3), or a trainable window whose output must still
+survive 97 frozen scrambling layers forward before reaching the frozen head
+(first3)?
 
 Freezing = requires_grad=False on the frozen Linear layers' parameters
 (ClassifierConfig.trainable_layers, see src/rp_study/config.py). Backprop
@@ -75,7 +86,7 @@ RECIPES = {
 
 TRAINABLE_LAYERS = {
     "first3": ["fc1", "fc2", "fc3"],
-    "last3": ["fc99", "fc100", "head"],
+    "last3": ["fc98", "fc99", "fc100"],
 }
 DATASETS = {
     "fmnist": "fashion_mnist",
