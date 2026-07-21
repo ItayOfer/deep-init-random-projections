@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Campaign 10 (rc frozen ends): the two failure mechanisms in one figure.
 
-last3 (fc99, fc100, head trainable) dies by float32 gradient underflow at the
-head; first3 (fc1, fc2, fc3 trainable) stays gradient-healthy but is causally
-inert -- 97 frozen downstream layers absorb any change before it reaches the
-loss. Both show flat eval_train_loss/accuracy for all 20 smoke epochs.
+last3 (fc98, fc99, fc100 trainable; head always frozen) dies by float32
+gradient underflow near the tail; first3 (fc1, fc2, fc3 trainable) stays
+gradient-healthy but is causally inert -- 97 frozen downstream layers absorb
+any change before it reaches the (also frozen) head. Both show flat
+eval_train_loss/accuracy for all 20 smoke epochs.
 
 Reads the 4 smoke JSONs directly (reports/results/rcfrozen_*_smoke_*_100L.json).
 Output: reports/figures/rc_frozen_ends/rcfrozen_mechanisms.png
@@ -24,8 +25,8 @@ RES = ROOT / "reports" / "results"
 DATASETS = {"fmnist": "tab:purple", "cifar10": "tab:red"}
 CONDITIONS = ["last3", "first3"]
 # 0-indexed positions in grad_norm_per_layer for each condition's trainable
-# hidden layers (fc99 -> idx 98, fc100 -> idx 99; fc1..fc3 -> idx 0..2).
-TRAINABLE_IDX = {"last3": [("fc99", 98), ("fc100", 99)],
+# hidden layers (fc98->idx 97, fc99->idx 98, fc100->idx 99; fc1..fc3 -> idx 0..2).
+TRAINABLE_IDX = {"last3": [("fc98", 97), ("fc99", 98), ("fc100", 99)],
                  "first3": [("fc1", 0), ("fc2", 1), ("fc3", 2)]}
 
 
@@ -68,12 +69,12 @@ for ds, color in DATASETS.items():
     epochs = [h["epoch"] for h in hist]
     for name, idx in TRAINABLE_IDX["last3"]:
         norms = [max(h["grad_norm_per_layer"][idx], 1e-12) for h in hist]
-        marker = "o" if name == "fc99" else "s"
+        marker = {"fc98": "o", "fc99": "s", "fc100": "^"}[name]
         ax_last3.plot(epochs, norms, marker=marker, ms=4, color=color,
                       label=f"{ds}/{name}")
 ax_last3.set_yscale("log"); ax_last3.set_xlabel("epoch")
 ax_last3.set_ylabel("trainable-layer grad norm (floored at 1e-12)")
-ax_last3.set_title("last3: fc99/fc100 gradients underflow to exact float32 zero")
+ax_last3.set_title("last3: fc98/fc99/fc100 gradients underflow to exact float32 zero")
 ax_last3.legend(fontsize=7); ax_last3.grid(alpha=0.3, which="both")
 
 for ds, color in DATASETS.items():

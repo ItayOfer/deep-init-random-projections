@@ -74,4 +74,19 @@ Local freeze-mechanics test passes (trainable-tensor count asserted per conditio
 
 **Done:** `cluster/10_rc_frozen_ends/README.md` Findings + §H1 vs H2 + Evidence sections filled with numbers traced to all 8 JSONs, 3 figures generated (`scripts/rc_frozen_ends_plots.py`, `scripts/rc_frozen_ends_rcfwd_plots.py`) and curated into `docs/figures/`; `cluster/README.md` row 10 + campaign-details entry updated; `reports/results/INDEX.md` row updated; FRONTIER W1 updated. Branch `work/rc-frozen-ends` (pushed to origin) ready for the oracle to spot-check and merge.
 
-**Not done / left open:** `first3+head` variant (flagged above) not run — low priority, both recipes' `first3` result suggests it would fail the same way (downstream absorption, not head scale, is the mechanism). `last3`/rcfwd audit (200 ep) not run — flagged in the README as a real candidate given its still-improving trajectory, but promoting it is the oracle's/advisor's call, not made unilaterally here. RESEARCH_LOG untouched pending oracle spot-check per the definition of done.
+**Not done / left open (as of the above):** `first3+head` variant (flagged above) not run. `last3`/rcfwd audit (200 ep) not run — flagged in the README as a real candidate given its still-improving trajectory, but promoting it is the oracle's/advisor's call, not made unilaterally here. RESEARCH_LOG untouched pending oracle spot-check per the definition of done.
+
+**Design correction (2026-07-21), before oracle handoff:** the user caught that `last3` as defined above (`fc99, fc100, head` trainable) was asymmetric with `first3` (`fc1, fc2, fc3` trainable, head frozen) — the head was only ever trainable at one end. The intended design is symmetric: the head is always the fixed readout, never part of either trainable window. Corrected `TRAINABLE_LAYERS["last3"]` to `{fc98, fc99, fc100}` (head frozen in both conditions) in `run_rc_frozen_ends.py`. `first3` was unaffected (its head was already frozen) and was not rerun. Reran all 4 `last3` smoke jobs (both recipes × both datasets) under the corrected definition; local CPU 2-epoch mechanics check done first.
+
+**Corrected results — the qualitative picture is unchanged, numbers updated:**
+
+| Cell | train acc ep1→ep20 | loss (all 20 ep) | trainable-layer grads | verdict |
+|---|---|---|---|---|
+| `last3`/fmnist (raw) | 0.1000 → 0.1000 (bit-exact) | 2.302585, bit-exact | fc98/fc99/fc100: 1e-10–1e-5 → exact float32 **zero** from ep7 | **DEAD** |
+| `last3`/cifar10 (raw) | 0.1000 → 0.1000 (bit-exact) | 2.302585, bit-exact | fc98/fc99/fc100: 1e-10–1e-5 → exact float32 **zero** from ep17 | **DEAD** |
+| `last3`/fmnist (rcfwd) | 0.1087 → **0.2366** (steady climb) | 2.597 → **2.117** (steady fall) | fc98/fc99/fc100: 2.2–2.3 → 1.10–1.17, healthy | **LEARNING** |
+| `last3`/cifar10 (rcfwd) | 0.1073 → **0.2200** (steady climb) | 2.603 → **2.144** (steady fall) | fc98/fc99/fc100: 1.75–1.83 → 1.17–1.24, healthy | **LEARNING** |
+
+`first3` numbers (both recipes) are unchanged from above. All conclusions in §H1 vs H2 hold under the corrected definition — `last3`/rcfwd is if anything slightly stronger now (24%/22% vs. the previous asymmetric-design's 21%/19% at ep20), since `fc98` sits one layer earlier (marginally less forward-decayed) than the previous window. Regenerated all 3 figures (`scripts/rc_frozen_ends_plots.py`, `scripts/rc_frozen_ends_rcfwd_plots.py`) and rewrote `cluster/10_rc_frozen_ends/README.md`, `cluster/README.md`, `reports/results/INDEX.md`, and FRONTIER W1 with the corrected numbers and layer names throughout. The original `first3+head` flag is now moot (resolved by this correction — head is frozen in both conditions, symmetrically).
+
+**Not done / left open (final):** a `head`-trainable-in-both variant (distinct from the resolved `first3+head` flag) was never run — low priority, likely to track existing results closely per the reasoning in the README's Evidence & gaps. `last3`/rcfwd audit (200 ep) still not run, still flagged as a real candidate, still the oracle's/advisor's call. RESEARCH_LOG untouched pending oracle spot-check per the definition of done.

@@ -33,7 +33,7 @@ RES = ROOT / "reports" / "results"
 FIG_DIR = ROOT / "reports" / "figures" / "rc_frozen_ends"
 
 DATASETS = {"fmnist": "tab:purple", "cifar10": "tab:red"}
-TRAINABLE_IDX = {"last3": [("fc99", 98), ("fc100", 99)],
+TRAINABLE_IDX = {"last3": [("fc98", 97), ("fc99", 98), ("fc100", 99)],
                  "first3": [("fc1", 0), ("fc2", 1), ("fc3", 2)]}
 
 
@@ -74,11 +74,11 @@ for ds, color in DATASETS.items():
     epochs = [h["epoch"] for h in hist]
     for name, idx in TRAINABLE_IDX["last3"]:
         norms = [h["grad_norm_per_layer"][idx] for h in hist]
-        marker = "o" if name == "fc99" else "s"
+        marker = {"fc98": "o", "fc99": "s", "fc100": "^"}[name]
         ax_last3.plot(epochs, norms, marker=marker, ms=4, color=color,
                       label=f"{ds}/{name}")
 ax_last3.set_xlabel("epoch"); ax_last3.set_ylabel("trainable-layer grad norm")
-ax_last3.set_title("last3: fc99/fc100 gradients healthy -- no underflow this time")
+ax_last3.set_title("last3: fc98/fc99/fc100 gradients healthy -- no underflow this time")
 ax_last3.legend(fontsize=7); ax_last3.grid(alpha=0.3)
 
 for ds, color in DATASETS.items():
@@ -109,8 +109,8 @@ print(f"saved {out1.relative_to(ROOT)}")
 # ---------------------------------------------------------------------------
 fig2, (ax_l3, ax_f3) = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
-for ax, cond, title in [(ax_l3, "last3", "last3: fc99, fc100, head trainable"),
-                        (ax_f3, "first3", "first3: fc1, fc2, fc3 trainable")]:
+for ax, cond, title in [(ax_l3, "last3", "last3: fc98, fc99, fc100 trainable (head frozen)"),
+                        (ax_f3, "first3", "first3: fc1, fc2, fc3 trainable (head frozen)")]:
     for recipe, ls in [("raw", "--"), ("rcfwd", "-")]:
         for ds, color in DATASETS.items():
             hist = load(cond, ds, recipe)
