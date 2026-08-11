@@ -61,12 +61,12 @@ for cond, ls in [("last3", "-"), ("first3", "--")]:
 
 ax_loss.axhline(2.302585, color="gray", ls=":", lw=1, label="ln(10)")
 ax_loss.set_xlabel("epoch"); ax_loss.set_ylabel("eval_train_loss")
-ax_loss.set_title("Loss: last3 falls, first3 climbs well past ln(10)")
+ax_loss.set_title("Loss")
 ax_loss.legend(fontsize=7); ax_loss.grid(alpha=0.3)
 
 ax_acc.axhline(0.10, color="gray", ls=":", lw=1, label="chance")
 ax_acc.set_xlabel("epoch"); ax_acc.set_ylabel("eval_train_accuracy")
-ax_acc.set_title("Accuracy: last3 climbs steadily, first3 stays at chance")
+ax_acc.set_title("Accuracy")
 ax_acc.legend(fontsize=7); ax_acc.grid(alpha=0.3)
 
 for ds, color in DATASETS.items():
@@ -78,7 +78,7 @@ for ds, color in DATASETS.items():
         ax_last3.plot(epochs, norms, marker=marker, ms=4, color=color,
                       label=f"{ds}/{name}")
 ax_last3.set_xlabel("epoch"); ax_last3.set_ylabel("trainable-layer grad norm")
-ax_last3.set_title("last3: fc98/fc99/fc100 gradients healthy -- no underflow this time")
+ax_last3.set_title("Tail window gradients (fc98–fc100)")
 ax_last3.legend(fontsize=7); ax_last3.grid(alpha=0.3)
 
 for ds, color in DATASETS.items():
@@ -90,13 +90,11 @@ for ds, color in DATASETS.items():
         ax_first3.plot(epochs, norms, marker=marker, ms=4, color=color,
                        label=f"{ds}/{name}")
 ax_first3.set_xlabel("epoch"); ax_first3.set_ylabel("trainable-layer grad norm")
-ax_first3.set_title("first3: fc1-fc3 gradients healthy too -- still no progress")
+ax_first3.set_title("Front window gradients (fc1–fc3)")
 ax_first3.legend(fontsize=7); ax_first3.grid(alpha=0.3)
 
-fig.suptitle("Campaign 10 follow-up -- rcfwd recipe (row_centered_forward_balanced "
-             "+ grad_rescale)\nlast3 starts learning; first3 still fails, "
-             "loss actively worsens instead of staying flat",
-             fontsize=11)
+fig.suptitle("Campaign 10 — corrected recipe (row_centered_forward_balanced + grad_rescale), "
+             "100L, 20-epoch smoke", fontsize=11)
 fig.tight_layout(rect=[0, 0, 1, 0.92])
 
 out1 = FIG_DIR / "rcfrozen_rcfwd_mechanisms.png"
@@ -109,8 +107,8 @@ print(f"saved {out1.relative_to(ROOT)}")
 # ---------------------------------------------------------------------------
 fig2, (ax_l3, ax_f3) = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
 
-for ax, cond, title in [(ax_l3, "last3", "last3: fc98, fc99, fc100 trainable (head frozen)"),
-                        (ax_f3, "first3", "first3: fc1, fc2, fc3 trainable (head frozen)")]:
+for ax, cond, title in [(ax_l3, "last3", "Tail window (fc98–fc100)"),
+                        (ax_f3, "first3", "Front window (fc1–fc3)")]:
     for recipe, ls in [("raw", "--"), ("rcfwd", "-")]:
         for ds, color in DATASETS.items():
             hist = load(cond, ds, recipe)
@@ -123,11 +121,7 @@ for ax, cond, title in [(ax_l3, "last3", "last3: fc98, fc99, fc100 trainable (he
     ax.legend(fontsize=7); ax.grid(alpha=0.3)
 ax_l3.set_ylabel("eval_train_accuracy")
 
-fig2.suptitle("Does correcting the recipe (row_centered_he -> forward_balanced+"
-              "grad_rescale) unlock training?\nlast3: yes, slowly (H1-consistent -- "
-              "the raw recipe's forward-scale collapse was the cause) | "
-              "first3: no (H2-consistent -- content, not gradient conditioning, "
-              "is the bottleneck)", fontsize=10)
+fig2.suptitle("Campaign 10 — training accuracy, raw init vs corrected recipe", fontsize=11)
 fig2.tight_layout(rect=[0, 0, 1, 0.88])
 
 out2 = FIG_DIR / "rcfrozen_recipe_comparison.png"

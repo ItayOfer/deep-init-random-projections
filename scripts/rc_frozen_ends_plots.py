@@ -56,12 +56,12 @@ for cond, ls in [("last3", "-"), ("first3", "--")]:
 ax_loss.axhline(2.302585, color="gray", ls=":", lw=1, label="ln(10)")
 ax_loss.set_ylim(2.302, 2.304)
 ax_loss.set_xlabel("epoch"); ax_loss.set_ylabel("eval_train_loss (rounded, 6dp)")
-ax_loss.set_title("Loss: bit-exact flat at ln(10) in all 4 cells")
+ax_loss.set_title("Loss")
 ax_loss.legend(fontsize=7); ax_loss.grid(alpha=0.3)
 
 ax_acc.axhline(0.10, color="gray", ls=":", lw=1, label="chance")
 ax_acc.set_xlabel("epoch"); ax_acc.set_ylabel("eval_train_accuracy")
-ax_acc.set_title("Accuracy: pinned at chance (10 classes)")
+ax_acc.set_title("Accuracy")
 ax_acc.legend(fontsize=7); ax_acc.grid(alpha=0.3)
 
 for ds, color in DATASETS.items():
@@ -74,7 +74,7 @@ for ds, color in DATASETS.items():
                       label=f"{ds}/{name}")
 ax_last3.set_yscale("log"); ax_last3.set_xlabel("epoch")
 ax_last3.set_ylabel("trainable-layer grad norm (floored at 1e-12)")
-ax_last3.set_title("last3: fc98/fc99/fc100 gradients underflow to exact float32 zero")
+ax_last3.set_title("Tail window gradients (fc98–fc100)")
 ax_last3.legend(fontsize=7); ax_last3.grid(alpha=0.3, which="both")
 
 for ds, color in DATASETS.items():
@@ -87,11 +87,10 @@ for ds, color in DATASETS.items():
                        label=f"{ds}/{name}")
 ax_first3.set_yscale("log"); ax_first3.set_xlabel("epoch")
 ax_first3.set_ylabel("trainable-layer grad norm")
-ax_first3.set_title("first3: fc1-fc3 gradients stay healthy, never vanish")
+ax_first3.set_title("Front window gradients (fc1–fc3)")
 ax_first3.legend(fontsize=7); ax_first3.grid(alpha=0.3, which="both")
 
-fig.suptitle("Campaign 10 -- rc frozen ends: two failure modes, one dead network\n"
-             "100L row_centered_he, NoBN, plain SGD lr=1e-2, seed 42, 20-epoch smoke",
+fig.suptitle("Campaign 10 — plain init (row_centered_he), 100L, 20-epoch smoke",
              fontsize=11)
 fig.tight_layout(rect=[0, 0, 1, 0.94])
 
