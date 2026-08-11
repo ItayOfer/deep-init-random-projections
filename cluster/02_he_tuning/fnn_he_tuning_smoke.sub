@@ -2,7 +2,6 @@
 #SBATCH --job-name=fnn_he_tune_smoke
 #SBATCH -p dlc
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=dgx01
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --time=01:00:00

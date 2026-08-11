@@ -2,7 +2,7 @@
 #SBATCH --job-name=row_centered_audit_fmnist_50L_bn
 #SBATCH -p dlc
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=dgx01,dgx04
+#SBATCH --exclude=dgx04
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=06:00:00

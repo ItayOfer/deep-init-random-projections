@@ -76,7 +76,7 @@ All sub files use:
 ```
 #SBATCH -p dlc
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=dgx01,dgx04   # driver/stability issues
+#SBATCH --exclude=dgx04         # driver/stability issues
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --output=%x-%j.out      # job-name + job-id stdout

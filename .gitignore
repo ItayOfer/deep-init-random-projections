@@ -20,6 +20,7 @@ docs/scratch/
 
 # Local cluster identity (copy cluster/cluster.env.example and edit)
 cluster/cluster.env
+cluster/cluster.env.dlc2
 
 # Editor / OS noise
 .DS_Store

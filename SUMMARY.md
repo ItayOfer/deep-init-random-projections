@@ -135,7 +135,7 @@ Cluster: SLURM-managed; identity configured in `cluster/cluster.env` (gitignored
 2. Cluster: clear stale bytecode, then `sbatch cluster/<job>.sub`, then `squeue -u "$CLUSTER_USER"`, then `tail -f <name>-<JOBID>.out`.
 3. Local: `scp` results from `~/thesis/reports/results/`.
 
-SLURM conventions: `#SBATCH --exclude=dgx01,dgx04` (driver / stability issues), pyxis container `${HOME}/nvidia_pt.sqsh` mounted at `/mount`, stdout pattern `%x-%j.out`.
+SLURM conventions: `#SBATCH --exclude=dgx04` (old driver; `dgx01` was excluded too but that was lifted Aug 2026 after the DLC hardware upgrade), pyxis container `${HOME}/nvidia_pt.sqsh` mounted at `/mount`, stdout pattern `%x-%j.out`.
 
 ## Current state (May 2026)
 

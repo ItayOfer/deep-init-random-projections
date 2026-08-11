@@ -2,7 +2,7 @@
 #SBATCH --job-name=recovery_plain_sgd_fmnist_100L_bn
 #SBATCH -p dlc
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=dgx01,dgx04
+#SBATCH --exclude=dgx04
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=08:00:00

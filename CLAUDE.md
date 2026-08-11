@@ -30,7 +30,7 @@ Every substantive task runs the same loop — defined in full in `FRONTIER.md` �
 ### Starting a new campaign (checklist)
 
 1. `mkdir cluster/<NN>_<slug>/` (next number; chronological). Copy `cluster/09_rcfwd_rescale/run_rcfwd_gradrescale.py` as the skeleton — it carries the required idioms: `ROOT = Path(__file__).resolve().parents[2]`, `sys.path.insert` for `src` **and** `cluster/03_he_diagnostics` (shared `_result_to_payload`/`print_diagnostic_summary`), the `ARCH` dict, `--experiment/--seed/--device/--output/--lr` argparse, abort-on-explosion, and the no-clipping assert.
-2. One `.sub` per job, copied from a 09 sub: **job name = experiment label = JSON filename stem**; body runs `python -u cluster/<NN>_<slug>/run_X.py --experiment <label> ... --output reports/results/<label>.json`; keep the SBATCH block (dlc partition, `--exclude=dgx01,dgx04`, `%x-%j.out`).
+2. One `.sub` per job, copied from a 09 sub: **job name = experiment label = JSON filename stem**; body runs `python -u cluster/<NN>_<slug>/run_X.py --experiment <label> ... --output reports/results/<label>.json`; keep the SBATCH block (dlc partition, `--exclude=dgx04`, `%x-%j.out`).
 3. Smoke first (20 ep, `diagnostics_every=1`), gate audits (200 ep) on smoke triage.
 4. Write the campaign `README.md` from the standard shape: Question / Builds on / What ran / Findings (numbers ← JSONs) / Reproduce / Evidence & gaps. Add the campaign row in `cluster/README.md` and, when results land, in `reports/results/INDEX.md`.
 5. Loop: `bash cluster/sync_to_cluster.sh` → (cluster) clear `__pycache__` → `sbatch` → (local) `bash cluster/pull_results.sh '<label-glob>' <NN>_<slug>` → commit JSONs + docs → update FRONTIER.
@@ -149,7 +149,8 @@ If a long command (especially `scp src/... user@host:target`) wraps in the termi
 
 ### SLURM script conventions used here
 
-- `#SBATCH --exclude=dgx01,dgx04` — `dgx04`'s CUDA driver is too old; `dgx01` we've also hit issues on. Keep this exclude.
+- `#SBATCH --exclude=dgx04` — `dgx04`'s CUDA driver is too old. Keep this exclude.
+- `dgx01` was excluded for past issues; the Aug 2026 DLC hardware/OS upgrade re-imaged it (along with `dgx02`) and the exclude was lifted after a clean `cluster/test_job.sub` run on `dgx02` (sibling node, same upgrade) confirmed the new stack works — see [cluster/cluster.env.dlc2](cluster/cluster.env.dlc2) for the upgraded-login-node test env. If dgx01/dgx02 jobs start misbehaving again, re-add `dgx01` to the exclude list here and across `cluster/*/*.sub`.
 - Container image: `${HOME}/nvidia_pt.sqsh` (pyxis), mounted at `/mount`.
 - Stdout pattern: `%x-%j.out` (job-name + ID) — easy to find with a glob.
 - Paths inside `.sub` files are **relative to the repo root** (`python -u cluster/<NN>_<campaign>/run_X.py`, `--output reports/results/<label>.json`); submit from `~/thesis`.
