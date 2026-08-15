@@ -69,3 +69,61 @@ Five things this table already establishes — build on them, do not repeat them
 
 ## Outcome  *(filled by the worker at the end)*
 
+**Status: init-time work complete on branch `work/relu-shift`; cluster jobs scaffolded but NOT submitted** (the worker session had no cluster access — no passwordless auth from an agent session). Full write-up: [`cluster/11_relu_shift/README.md`](../../../cluster/11_relu_shift/README.md).
+
+### Definition of done
+
+- [x] `relu_shift=None` bit-exact no-op — **PASS**, `scripts/relu_shift_noop_check.py` → `reports/results/relu_shift_noop_verification.json`. Part A: output, loss, 6 gradient tensors and 202 parameter tensors all `torch.equal` to `main` (`e7d7a33`) at 100L/width 500, with a `relu_shift=0.25` control that *does* change the output. Part B: a full 60k-sample epoch of campaign-10's `rcfrozen_first3_smoke_fmnist_100L` config matches bitwise field-for-field. Caveat recorded in the JSON: the committed campaign-10 JSONs are CUDA and this is CPU, so the *committed* row is reference, not an equality assertion — `eval_train_loss` agrees at the reported 6 dp (2.302585) while `eval_train_accuracy` is 0.10143 vs 0.10187, because that network's logits are O(1e-6) and the argmax is decided by float noise.
+- [x] Screen JSONs for the finer `c` grid at ≥2 depths and both datasets — 6 JSONs at depths {30, 60, 100} × {fmnist, cifar10}, `c ∈ {0.1…1.0 step 0.1} ∪ {0.25, 0.65, 0.75, 1/√π}`, plus 2 per-sample mechanism controls. Operating points justified in README §5/§7.
+- [x] Both fork arms measured, with a stated recommendation — **detached** (§6), with the counter-evidence recorded.
+- [x] Forward, backward and geometry for every candidate carried into training — screen (fwd+geometry), `relu_shift_funnel_fwd_bwd.json` (bwd, both fork arms, both datasets), `relu_shift_duality_check.json`.
+- [ ] **Training JSONs — NOT DONE.** 36 `.sub` files written (18 smoke + 18 audit), runner locally smoke-tested on CPU. Submission sequence below.
+- [x] The `√r` observation — **derived and refuted**; the real constant is `r` (README §3).
+- [x] Verification note — below.
+
+### The two leads
+
+**Lead 2 (`√r`) — refuted, with the correct result in its place.** The per-layer forward gain is `G(c) = √(1 − 2c/√π + c²)`; at `c = 1/√π` this is `√(1 − 1/π) = √((π−1)/π) = r = 0.82565`, **not** `√r = 0.90866`. The measured 0.9083 at L=60 is the geometric mean of a gain that drifts upward with depth — 0.8381/0.8438/0.8580/0.9083/0.9404 at L=10/20/30/60/100 (fmnist) and 0.8422→0.9608 (cifar10) — so it is not a constant and cannot equal one; it crosses `√r` near L=60 by coincidence. The closed form is confirmed positively by `c = 0.75`, which stays in the regime where the theory holds and whose implied gain is depth-independent at 0.8552/0.8459/0.8464/0.8463/0.8468 against `G(0.75) = 0.8463`. **The thesis-level consequence is larger than the lead:** exact DC removal costs exactly `r` per layer — the same constant row-centering pays, which is the duality expressed as a number — and since `G(c) < 1` for all `c ∈ (0, 2/√π)`, requirements (i) and (ii) are provably incompatible under DC removal.
+
+**Lead 1 (non-monotonicity in `c`) — resolved: it is an artifact of the batch-global RMS, not a property of DC removal.** Because `rms` is one scalar over the whole batch, the subtracted quantity is *absolute* rather than proportional to each sample's own scale; absolute subtraction amplifies relative norm spread, which compounds with depth, and a sample at relative scale `t` is then effectively shifted with coefficient `c/t` — a different point of the U-shaped `A(c) = c² − 2c/√π` curve. The diagnostic `norm_heterogeneity_kappa` collapses to 0.32–0.68 exactly where the measurement diverges from theory and stays ≥ 0.998 where it agrees. The control settles it: with a **per-sample** RMS the closed-form cosine fixed point `ρ*(c)` matches measurement to ~0.01 across the whole grid, monotonicity is restored, and the optimum snaps back to exactly `c = 1/√π`, giving **mean pairwise cosine 0.0037 at 100 layers**. So the governing quantity is the competition between DC-cancellation quality (maximised at `c = 1/√π`) and norm-homogenisation (monotone increasing in `c`); with the batch-global form the second fails below `c ≈ 0.75`, displacing the empirical optimum in a depth- and dataset-dependent way (fmnist 0.65 → 0.70 → 0.75 at 30/60/100L; cifar10 0.75 → 0.80 → 0.80).
+
+**Raised for the oracle, not acted on: adopt the per-sample RMS?** One line; makes the family behave as designed; removes the batch-dependence wart. Out of the brief's settled scope, so not in the grid. It does **not** rescue requirement (ii).
+
+### Verification note (numbers → file → field)
+
+| Claim | File in `reports/results/` | Field |
+|---|---|---|
+| no-op PASS, 202 params, bitwise epoch | `relu_shift_noop_verification.json` | `part_a_tensor_level.*`, `part_b_metric_level.*`, `verdict` |
+| implied gain vs depth at `c=1/√π` and `c=0.75` | `relu_shift_geometry_screen_100L_{fmnist,cifar10}.json` | `candidates["he_shift_c0.5642"].implied_forward_gain_at_depth`, same for `c0.7500` |
+| closed-form predictions | same | `analytic_gain_G`, `analytic_cosine_fixed_point` |
+| dead fractions (always at N=512) | `relu_shift_geometry_screen_{30,100}L_*.json` | `dataset_dead_fraction[-1]`, `config.samples` |
+| cosine / content / dist-corr | same | `mean_pairwise_cosine[-1]`, `cosine_knn_accuracy[-1]`, `distance_correlation_probe_layers["30"|"100"]` |
+| kappa (heterogeneity) | same | `norm_heterogeneity_kappa` |
+| per-sample control | `relu_shift_geometry_screen_{60,100}L_fmnist_persample.json` | `mean_pairwise_cosine[-1]` vs `analytic_cosine_fixed_point` |
+| backward funnel + fork | `relu_shift_funnel_fwd_bwd.json` | `datasets.<ds>.<cand>.{forward_rms,backward_delta_rms_ratio,grad_row_norm_ratio}`, `fork_relative_grad_diff` |
+| duality | `relu_shift_duality_check.json` | `cases.*.{relative_output_diff,relative_loss_diff,max_relative_grad_diff}`, `row_centering_premise` |
+| 2-epoch pre-triage | `relushift_local_pretriage_30L_{fmnist,cifar10}.json` | `arms.<arm>.eval_train_accuracy` |
+
+Prior committed screen `relu_shift_geometry_screen.json` (60L fmnist) is unchanged and was reproduced by the widened grid: `c=0.25` implied gain 0.9368 and `c=1/√π` 0.9083 both re-derived identically.
+
+### Submission sequence for the user (copy-pasteable)
+
+```bash
+# 1. LOCAL — from the repo root, after the oracle merges work/relu-shift into main
+bash cluster/sync_to_cluster.sh
+
+# 2. CLUSTER — config.py gained two new fields, so clearing bytecode is mandatory
+source cluster/cluster.env && ssh "$CLUSTER_USER@$CLUSTER_HOST"
+find ~/thesis/src ~/thesis/cluster -name "__pycache__" -exec rm -rf {} +
+cd ~/thesis
+for f in cluster/11_relu_shift/relushift_*_smoke_*.sub; do sbatch "$f"; done   # 18 jobs
+squeue -u "$CLUSTER_USER" -o "%.18i %.40j %.8T %.10M %R"
+
+# 3. LOCAL — pull results + logs
+bash cluster/pull_results.sh 'relushift_*_smoke_*' 11_relu_shift
+```
+
+Each log ends with `SUMMARY <label> | PASS/fail | ...`. Two banner asserts will fail loudly if the sync or the bytecode clear went wrong: `model.relu_shift` must equal the configured `c` (a `MISSING` value means stale `.pyc`), and `batch_size == eval_batch_size` (the shift's RMS is a batch statistic). Gate the 18 audit subs (`relushift_*_audit_*.sub`) on smoke triage.
+
+**Triage expectations, pre-registered from the screen and the CPU pre-triage** — divergence from these is the finding: `c = 0.10` and `c = 0.25` at 30L should train comparably to `he` and far better than `row_centered_he`; `c = 0.70` at 30L should be **stuck at chance** (it was, on both datasets, at 2 epochs); everything at 100L should fail, with the `c = 0.25`/100L cells expected to be the least bad of the shift arms since their forward RMS (1.5e-2 fmnist) is the only one not in the `1e-7` underflow regime.
+

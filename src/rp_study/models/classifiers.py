@@ -48,6 +48,8 @@ class DeepFCClassifier(nn.Module):
         bn_eps: float = 1e-5,
         grad_rescale: Optional[float] = None,
         trainable_layers: Optional[List[str]] = None,
+        relu_shift: Optional[float] = None,
+        relu_shift_detach: bool = False,
         **init_kwargs,
     ) -> None:
         super().__init__()
@@ -60,6 +62,8 @@ class DeepFCClassifier(nn.Module):
         self.num_classes = num_classes
         self.use_batch_norm = use_batch_norm
         self.grad_rescale = grad_rescale
+        self.relu_shift = relu_shift
+        self.relu_shift_detach = relu_shift_detach
 
         self.hidden_layers = nn.ModuleList()
         self.hidden_norms = nn.ModuleList()
@@ -122,6 +126,17 @@ class DeepFCClassifier(nn.Module):
             if self.use_batch_norm:
                 x = self.hidden_norms[idx](x)
             x = torch.relu(x)
+            if self.relu_shift is not None:
+                # Scale-relative post-ReLU DC removal (campaign 11):
+                #     a <- a - c * rms(a)
+                # rms is one scalar over the whole (batch x units) tensor, so
+                # the subtracted quantity is a shared constant -- exactly the
+                # activation-space dual of row-centering the NEXT weight, since
+                # W(a - s*1) = Wa - s*(W*1) and s*(W*1) = 0 when W is row-centered.
+                rms = x.pow(2).mean().sqrt()
+                if self.relu_shift_detach:
+                    rms = rms.detach()
+                x = x - self.relu_shift * rms
             if self.grad_rescale is not None:
                 x = _GradRescale.apply(x, self.grad_rescale)
         return self.classifier(x)
@@ -268,6 +283,8 @@ def build_classifier(config: ClassifierConfig) -> nn.Module:
             bn_eps=config.bn_eps,
             grad_rescale=config.grad_rescale,
             trainable_layers=config.trainable_layers,
+            relu_shift=config.relu_shift,
+            relu_shift_detach=config.relu_shift_detach,
             **kwargs,
         )
     if config.architecture == "cnn":

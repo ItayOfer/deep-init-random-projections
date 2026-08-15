@@ -81,6 +81,30 @@ class ClassifierConfig:
     # forward-balanced backward amplification g_bwd = 1/r with r = sqrt((pi-1)/pi)
     # ~ 0.826. None disables it (standard backprop).
     grad_rescale: Optional[float] = None
+    # Post-ReLU DC removal (FC only), campaign 11: after each hidden ReLU,
+    #     a <- a - relu_shift * rms(a),   rms(a) = a.pow(2).mean().sqrt()
+    # the SCALE-RELATIVE shift. relu_shift = c is the coefficient; c = 1/sqrt(pi)
+    # ~ 0.5642 removes exactly E[a] for a rectified Gaussian. None disables it,
+    # which is a bit-exact no-op (no tensor op is inserted at all).
+    # NOTE the rms is a single scalar over the WHOLE tensor (batch x units), so
+    # like BatchNorm this makes the forward pass batch-dependent; unlike
+    # BatchNorm there are no running statistics, so eval uses the eval batch's
+    # own rms. Keep eval_batch_size == batch_size for like-for-like numbers.
+    relu_shift: Optional[float] = None
+    # Whether rms(a) is treated as a constant in the backward pass.
+    # True (default, RECOMMENDED) = detached: the shift is a pure per-layer
+    #   additive bias and the backward pass is bit-identical to plain He
+    #   backprop, so the intervention is purely a forward-pass/geometry one.
+    #   This is the exact activation-space dual of row-centering, which is
+    #   likewise a pure forward-side constraint.
+    # False = differentiable: the Jacobian picks up the rank-one term
+    #   -(c/(N*rms)) * 1 a^T (N = numel), which couples every unit AND every
+    #   SAMPLE in the batch -- a BatchNorm-like coupling with no counterpart in
+    #   row-centering. Measured at init to move the per-layer weight gradient by
+    #   a median 3-32% and up to 71% (reports/results/relu_shift_funnel_fwd_bwd.json,
+    #   field `fork_relative_grad_diff`), with no principled scaling.
+    # Ignored when relu_shift is None. See cluster/11_relu_shift/README.md.
+    relu_shift_detach: bool = True
     # Restrict training to a subset of layers (FC only): requires_grad=False on
     # every Linear layer NOT named here (weight and bias), backprop still runs
     # through frozen layers unchanged. Names: "fc<N>" (1-indexed hidden layer,

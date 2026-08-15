@@ -1,0 +1,24 @@
+#!/bin/bash
+#SBATCH --job-name=relushift_rc_audit_fmnist_30L
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=dgx04
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=04:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/11_relu_shift/run_relu_shift.py \
+    --experiment relushift_rc_audit_fmnist_30L \
+    --seed 42 \
+    --device cuda \
+    --output reports/results/relushift_rc_audit_fmnist_30L.json"
