@@ -319,6 +319,60 @@ W_ij ~ N(mean, sqrt(variance))
 
 ---
 
+## Forward-Pass Modifiers (not registry initializers)
+
+These change the **forward pass**, not the weight distribution, so they are *not*
+`@register_initializer` entries and do not appear in the registry or in
+`notebooks/05_initializer_dashboard.ipynb`'s `INIT_STRATEGIES`. They are
+`ClassifierConfig` flags, composable with any initializer above. Documented here
+so this reference stays complete.
+
+### F1. `relu_shift` -- Post-ReLU DC Removal (campaign 11)
+
+**Formula** (applied after every hidden ReLU, before the `grad_rescale` hook):
+```
+a  <-  relu(Wx) - c * rms(relu(Wx)),        rms(u) = sqrt(mean(u^2))
+```
+`rms` is one scalar over the whole `(batch x units)` tensor. Config:
+`ClassifierConfig.relu_shift = c` (`None` disables it, a bit-exact no-op) and
+`relu_shift_detach` (default `True`).
+
+**Motivation:** ReLU output is non-negative, so `E[a] = rms(a)/sqrt(pi) > 0`.
+That positive DC component is shared by every sample and is the engine of the
+arc-cosine kernel's `rho -> 1` collapse. `c = 1/sqrt(pi) ~ 0.5642` removes
+exactly `E[a]`.
+
+**Relation to the row-centered family -- this is its exact activation-space
+dual.** The next layer computes `W(a - s*1) = Wa - s*(W*1)`, so on a row-centered
+weight (`W*1 = 0`) the shift is precisely a forward no-op. Row-centering kills
+the DC on the way *in* (weights); this kills it on the way *out* (activations).
+Verified numerically in `scripts/relu_shift_duality_check.py`. The identity is
+**forward-only**: `grad_W = delta^T a_prev` and `a_prev` is shifted, so weight
+gradients differ by the rank-one term `s * delta^T 1` even under row centering.
+
+**Properties** (derived and measured in [`cluster/11_relu_shift/README.md`](cluster/11_relu_shift/README.md)):
+- Per-layer forward gain, with `A(c) = c^2 - 2c/sqrt(pi)`:
+  **`G(c) = sqrt(1 + A(c)) = sqrt(1 - 2c/sqrt(pi) + c^2)`**
+- `G` is minimised at `c = 1/sqrt(pi)`, where `G = sqrt((pi-1)/pi) = r ~ 0.8256`
+  -- **exactly** row-centering's forward gain. Exact DC removal and unit forward
+  gain are incompatible: `G(c) < 1` for every `c` in `(0, 2/sqrt(pi))`.
+- Cosine recursion `rho -> (g(rho) + A)/(1 + A)` with `g` the arc-cosine kernel
+  ratio. `rho = 1` stays a fixed point but becomes **repelling** (multiplier
+  `1/(1+A) > 1`); the attracting fixed point `rho*(c)` is `0` exactly at
+  `c = 1/sqrt(pi)`.
+- Eliminates dying neurons: 0.000 dataset-dead at 30L for every `c <= 0.75`,
+  against He's 0.342 (fmnist) / 0.302 (cifar10) at N=512.
+- Because `rms` is a **batch** statistic with no running-statistics mechanism,
+  the forward pass is batch-dependent and eval uses the eval batch's own `rms`.
+  Keep `batch_size == eval_batch_size`.
+- `relu_shift_detach=True` (recommended, default) makes the shift a pure
+  per-layer additive bias with a backward pass bit-identical to plain He
+  backprop -- the clean dual of row-centering. `False` keeps the rank-one
+  Jacobian term `-(c/(N*rms)) * 1 a^T`, which couples units *and samples*;
+  measured to move per-layer weight gradients by a median 3-32%, up to 71%.
+
+---
+
 ## Quick Reference Table
 
 | Name | Row Sum = 0? | Variance Adjusted? | Gradient Trap? | Best For |

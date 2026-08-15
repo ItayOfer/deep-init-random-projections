@@ -1,0 +1,50 @@
+{
+  "description": "Bit-exact no-op verification for ClassifierConfig.relu_shift",
+  "config": {
+    "reference_revision": "main (e7d7a33)",
+    "depth": 100,
+    "width": 500,
+    "device": "cpu",
+    "reference_label": "rcfrozen_first3_smoke_fmnist_100L"
+  },
+  "part_a_tensor_level": {
+    "bitwise_identical": true,
+    "control_relu_shift_0.25_changes_output": true,
+    "n_grad_tensors_compared": 6,
+    "n_param_tensors_compared": 202,
+    "loss_reference": 2.3025851249694824,
+    "loss_new_relu_shift_none": 2.3025851249694824,
+    "loss_control_relu_shift_025": 2.3025851249694824
+  },
+  "part_b_metric_level": {
+    "history_bitwise_identical": true,
+    "mismatched_fields": [],
+    "epochs_compared": 1,
+    "new_code_first_epoch_cpu": {
+      "epoch": 1,
+      "train_loss": 2.3025853633880615,
+      "train_accuracy": 0.10065,
+      "test_loss": 2.3025853633880615,
+      "test_accuracy": 0.0985,
+      "eval_train_loss": 2.3025853633880615,
+      "eval_train_accuracy": 0.10143333333333333,
+      "learning_rate": 0.01,
+      "bn_running_mean_norm": null,
+      "bn_running_var_mean": null
+    },
+    "committed_first_epoch_cuda": {
+      "epoch": 1,
+      "train_loss": 2.3025848880767823,
+      "train_accuracy": 0.09883333333333333,
+      "test_loss": 2.302584887313843,
+      "test_accuracy": 0.0958,
+      "eval_train_loss": 2.3025848880767823,
+      "eval_train_accuracy": 0.10186666666666666,
+      "learning_rate": 0.01,
+      "bn_running_mean_norm": null,
+      "bn_running_var_mean": null
+    },
+    "note": "OLD vs NEW is the no-op claim and is bitwise. The committed JSON was produced on CUDA; a 100L stack whose logits are O(1e-6) does not reproduce accuracy bitwise across devices, so the committed row is reference, not an equality assertion."
+  },
+  "verdict": "PASS"
+}
