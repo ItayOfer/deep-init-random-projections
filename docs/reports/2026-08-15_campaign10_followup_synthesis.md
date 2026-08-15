@@ -12,13 +12,14 @@ The advisor asked for three things. All three were answered, and two of them ans
 |---|---|---|
 | 1 | Redo the frozen-window experiments at **2 layers**, and train the working cell to ~99% train accuracy | Done. The tail window reaches **0.9498 train** at 400 epochs — but **0.1132 test**. It is memorizing, not learning. |
 | 2 | Do the correction **for the backward only**; check the activations, they will be small | Done, and the activations are `5.01e-9` — provably, since `_GradRescale` is identity in the forward pass. A **9-order-of-magnitude LR sweep** leaves the loss pinned at `ln 10` to within `2.08e-7`. The front window is unreachable, and it is not a step-size problem. |
-| 3 | Take He and **subtract a constant**, to prevent geometric collapse | Done, in the scale-relative form `a ← relu(Wx) − c·rms(a)`. At 30 layers trained end-to-end this **beats He on held-out data** — `c = 0.10` reaches **0.4496 test** on CIFAR-10 against He's **0.3835**, +6.6 pp. This is the first genuine win over He in the project. |
+| 3 | Take He and **subtract a constant**, to prevent geometric collapse | Done, in the scale-relative form `a ← relu(Wx) − c·rms(a)`. **It does not beat He.** At 30 layers the apparent +6.6 pp win is a final-epoch artifact that vanishes under robust statistics; at **100 layers** — the depth this thesis is about — every arm loses to He by 7–26 points, and on CIFAR-10 all four sit at chance. |
 
 Three cross-cutting results emerged that none of the three asks anticipated:
 
 - **Capacity ≠ content.** A 2–3 layer readout on a frozen 100-layer random stack memorizes the training set to 95% and generalizes at chance. The representation stays *injective* — points remain distinguishable — while class geometry is destroyed.
-- **The two protocols measure different things.** Frozen-readout ranks He first at *both* depths; end-to-end at 30L ranks the DC-removal arms first. These are not in conflict: DC removal makes a **worse random feature map** but a **better-conditioned optimization problem**.
+- **He wins under every protocol at every depth measured.** Frozen-readout ranks He first at 30L and 100L; end-to-end ranks it first at 100L and statistically level at 30L. An earlier reading had the two protocols in conflict and proposed that DC removal trades feature-map quality for optimization conditioning. With the 100L end-to-end arms in hand there is no conflict left to resolve, and no evidence for the conditioning benefit.
 - **The probe-based screen is vindicated.** Cosine-kNN said content is at chance by depth ~25. Held-out accuracy at depth 100 agrees. An earlier reading of this data — that the probes "understate badly" — was an artifact of reading train accuracy only, and is retracted here.
+- **DC removal is a dead end, by both routes.** Row-centering (weight-space) and the post-ReLU shift (activation-space) are the same intervention, pay the identical constant `r`, and neither beats He. That is a real result, not an absence of one: it closes a direction the thesis has pursued since the beginning.
 
 ---
 
@@ -179,7 +180,7 @@ Under `rcfwd`, where the forward is flat and the signal *does* arrive at O(1), t
 
 **This closes the hypothesis the ask was built on.** The worry was that the rescale might be misdirecting a gradient that, left alone, points somewhere useful. It is not: no scaling of that gradient, over nine orders of magnitude, changes anything.
 
-### 4.3 Ask 3 — He minus a constant
+### 4.3 Ask 3 — He minus a constant: no win, at either depth
 
 Run in the scale-relative form `a ← relu(Wx) − c·rms(a)`, swept over `c`. **30 layers, end-to-end, 20 epochs** (train / test):
 
@@ -211,7 +212,7 @@ The 400-epoch audits reach 0.95 train and 0.11 test. A frozen 100-layer random m
 
 This is why train and test must both be reported. Reading train alone produced two wrong conclusions, both retracted in §6.
 
-### 5.2 The two protocols measure different things — and it is not depth
+### 5.2 The protocol/depth question, and why it dissolved
 
 Campaign 11 (30L, end-to-end) says DC removal beats He. Campaign 12 (100L, frozen readout) says every shift arm loses to He. Those differed in *both* depth and protocol, so neither attributed. Running the frozen-readout protocol at 30L separates them:
 
@@ -226,11 +227,11 @@ Campaign 11 (30L, end-to-end) says DC removal beats He. Campaign 12 (100L, froze
 | `c = 0.70` | 0.1350 / 0.1346 | 0.1090 / 0.1036 | 0.1008 / 0.1011 |
 | `row_centered_he` | 0.1284 / 0.1264 | 0.1154 / 0.1149 | 0.1000 / 0.1000 |
 
-**He wins at both depths.** The disagreement is **protocol, not depth**, and the resolution is clean:
+**He wins at both depths.** When only the 30L end-to-end and 100L frozen-readout cells existed, the two campaigns appeared to disagree, and the natural reading was that the protocols measure different things — DC removal buying optimization conditioning at the cost of feature-map quality.
 
-> **DC removal produces a worse random feature map but a better-conditioned optimization problem.**
+**The 100L end-to-end arms dissolved that.** They were the empty cell in the 2×2, and they came back with He ahead by 7–26 points (§4.3). Combined with the 30L end-to-end win evaporating under robust statistics, the picture is simply: **He is ahead or level everywhere**. There is no protocol/depth tension to explain, and the "better-conditioned optimization problem" hypothesis has no support.
 
-Frozen-readout measures the first — how much class structure a *random* map leaves — and He wins. End-to-end measures the second — how trainable the parameterization is — and DC removal wins, because it eliminates dead units and improves conditioning. Both are true; they answer different questions.
+What the frozen-readout table *does* establish independently is the depth axis: at 30 layers He's readout reaches **0.5481 test** with train ≈ test; at 100 layers it is at chance. Class content dies between depth 30 and depth 100 — the campaign-09 claim, now measured on held-out data.
 
 A second signal in the same table: at 30 layers He's frozen readout gets **0.5481 test** with train ≈ test (no memorization at 20 epochs). At 100 layers it is at chance. So class content really does die between depth 30 and depth 100 — exactly the campaign-09 claim.
 
@@ -246,7 +247,7 @@ This matters for W3 (the parked α-family screen), which gates cluster time on p
 
 | belief | status | evidence |
 |---|---|---|
-| Campaign 09: "content is the bottleneck at ≥50L" | **vindicated** | test accuracy at 100L is chance for every arm and protocol |
+| Campaign 09: "content is the bottleneck at ≥50L" | **vindicated** | frozen-readout test at 100L is chance for every arm (He *does* train end-to-end at 100L NoBN: 0.9953/0.8633) |
 | Campaign 11: "the family is a negative result" | **overturned at 30L** | every shift arm beats He on CIFAR-10 test by 3.5–6.7 pp |
 | Campaign 11: "`c = 0.70` is stuck at chance — clearest evidence for the negative conclusion" | **retracted** | 2-epoch CPU pre-triage; at 20 epochs it reaches 0.9291 / 0.8535 |
 | Campaign 11: "requirements (i) and (ii) are provably incompatible" | **corrected** | the cost is transferable; it is the gain-coupling lock again (§3.1) |
