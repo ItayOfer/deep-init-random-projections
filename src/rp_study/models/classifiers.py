@@ -49,7 +49,11 @@ class DeepFCClassifier(nn.Module):
         grad_rescale: Optional[float] = None,
         trainable_layers: Optional[List[str]] = None,
         relu_shift: Optional[float] = None,
-        relu_shift_detach: bool = False,
+        # Must match ClassifierConfig.relu_shift_detach's default. A direct
+        # construction that omits this would otherwise silently get the
+        # differentiable variant, which moves per-layer weight gradients by a
+        # median 3-32% (reports/results/relu_shift_funnel_fwd_bwd.json).
+        relu_shift_detach: bool = True,
         **init_kwargs,
     ) -> None:
         super().__init__()
