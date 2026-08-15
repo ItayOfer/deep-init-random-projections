@@ -2,7 +2,7 @@
 # ============================================================
 # sync_to_cluster.sh — Upload/sync code to the cluster
 # ============================================================
-# Usage:  bash cluster/sync_to_cluster.sh [--dry-run] [--print-dest] [--tar]
+# Usage:  bash cluster/sync_to_cluster.sh [--dry-run] [--print-dest] [--tar] [--code-only]
 #
 # Run from your local machine (project root) whenever you
 # want to push code changes to the cluster.
@@ -19,6 +19,12 @@
 #   * rsync is genuinely absent — use the tar fallback, which needs only tar
 #     and ssh on the remote and uses ONE connection (one password prompt):
 #                          bash cluster/sync_to_cluster.sh --tar
+#
+# --code-only ships just what a SLURM job needs to run: src/, cluster/,
+# scripts/ and the root config files. It drops notebooks/, thesis/, docs/ and
+# reports/results/ — no runner or src module reads any of them, and runners
+# mkdir their own output dir. 0.6 MB instead of 33 MB, which matters a lot on
+# the --tar path since tar re-sends everything (rsync only sends deltas).
 # ============================================================
 
 set -euo pipefail
@@ -43,6 +49,7 @@ REMOTE="${CLUSTER_USER}@${CLUSTER_HOST}"
 RSYNC_FLAGS=(-avz --progress)
 USE_TAR=0
 DRY_RUN=0
+CODE_ONLY=0
 
 # One exclude list, shared by both transports. rsync and tar agree on these
 # patterns; the leading-slash form ('/data/') is rsync-anchored, so the tar
@@ -50,17 +57,31 @@ DRY_RUN=0
 EXCLUDES=(
   '__pycache__' '.git' '*.pyc' '.ipynb_checkpoints'
   'notebooks/data' '*.sqsh' 'logs' 'docs/scratch'
-  'reports/figures' 'cluster/cluster.env'
+  'reports/figures' 'reports/checkpoints' 'cluster/cluster.env'
+  # Agent scratch. .claude/worktrees holds a FULL second checkout per isolated
+  # agent run -- 221 MB after one, which silently quadrupled the sync payload
+  # (65 MB compressed, of which 54 MB was this). Never useful on the cluster.
+  '.claude' '.DS_Store'
 )
+
+# Dirs no SLURM job reads. Verified: no cluster/*/run_*.py or src/rp_study
+# module references them, and runners mkdir their own reports/results path.
+CODE_ONLY_EXCLUDES=( 'notebooks' 'thesis' 'docs' 'reports/results' )
 
 for arg in "$@"; do
   case "${arg}" in
     --print-dest) echo "${REMOTE}:${REMOTE_DIR}/"; exit 0 ;;
     --dry-run)    DRY_RUN=1; RSYNC_FLAGS+=(-n) ;;
     --tar)        USE_TAR=1 ;;
+    --code-only)  CODE_ONLY=1 ;;
     *) echo "Unknown option: ${arg}" >&2; exit 2 ;;
   esac
 done
+
+if [[ "${CODE_ONLY}" -eq 1 ]]; then
+  EXCLUDES+=("${CODE_ONLY_EXCLUDES[@]}")
+  echo "(--code-only: skipping ${CODE_ONLY_EXCLUDES[*]})"
+fi
 
 echo "Syncing code to ${REMOTE}:${REMOTE_DIR} ..."
 

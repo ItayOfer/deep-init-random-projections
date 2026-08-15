@@ -22,6 +22,9 @@ docs/scratch/
 cluster/cluster.env
 cluster/cluster.env.dlc2
 
+# Agent scratch (isolated-worktree runs put a full repo copy here)
+.claude/worktrees/
+
 # Editor / OS noise
 .DS_Store
 .Rhistory
