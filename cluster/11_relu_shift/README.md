@@ -8,12 +8,13 @@ a = relu(Wx) − c · rms(relu(Wx))
 
 and ask whether the three requirements — (i) no geometric collapse, (ii) stable gradients, (iii) preserved class content — are met better than by either `he` or `row_centered_he`. Brief: [`docs/plans_handoffs/briefs/2026-08-15_campaign11-relu-shift-dc-removal.md`](../../docs/plans_handoffs/briefs/2026-08-15_campaign11-relu-shift-dc-removal.md).
 
-**Headline (init-time; training not yet run).** The family is now understood in closed form rather than empirically. Two results:
+**Headline.** Two closed-form results at initialization, and — after the training runs landed on 2026-08-15 — a **positive** empirical result that overturns this campaign's original negative verdict.
 
 1. **Exact DC removal costs exactly `r = √((π−1)/π) ≈ 0.8256` of forward gain per layer — the *same* constant row-centering pays.** This is not an analogy; it is the duality expressed as a number, and it is a theorem (§The closed form). The brief's hope that the shift "decays the forward pass far less than row-centering" is **false**: the 60L measurement that suggested it (0.908 vs 0.828) was reading the gain in a regime where the shift had already stopped removing the DC.
-2. **The three requirements are not jointly satisfiable by DC removal**, and now for a *derivable* reason: requirement (i) needs `c` large enough to cancel the DC, requirement (ii) needs `G(c) = 1`, and `G(c) < 1` for every `c ∈ (0, 2/√π)`. The only shift with unit forward gain is no shift at all.
+2. `G(c) < 1` for every `c ∈ (0, 2/√π)`, so DC removal always costs forward gain. **Oracle correction (2026-08-15):** an earlier draft of this section concluded from that "the three requirements are not jointly satisfiable by DC removal — the only shift with unit forward gain is no shift at all." That overreaches. Boosting the He weights by `1/G(c)` — the exact analogue of what `row_centered_forward_balanced` does for row-centering — restores `g_fwd ≈ 1` and drives `g_bwd` to `1.2114 ≈ 1/r`, with the ratio `g_fwd/g_bwd` invariant under the boost (0.8862 unboosted vs 0.8861 boosted at `c = 1/√π`) — the signature of a **lock**, not an impossibility. The cost is transferable, and the correct, stronger claim is a **unification**: the gain-coupling lock is a property of DC removal *itself*, not of row-centering, and both routes — weight-space and activation-space — pay the identical constant `r`.
+3. **At 30 layers, DC removal beats He in real training** (§8, added 2026-08-15). `c = 0.10` reaches 0.9246 / 0.6374 against He's 0.9107 / 0.5052 — **+13.2 pp on cifar10**. Every shift arm beats He on both datasets. This is the first accuracy win over He by a new initializer in this project; campaign 09's best was reaching the *same* bar six epochs sooner.
 
-The negative result is the finding. What survives as genuinely positive: at **30 layers** the small-`c` shifts (`c = 0.1–0.25`) beat **both** baselines on distance-correlation-to-input while eliminating He's dying neurons entirely, at a healthy forward scale — the first candidate in this project to beat He on that metric.
+This campaign was originally written up as a negative result. **It is not one at 30L.** What remains genuinely negative is the 100-layer picture (§5) and the frozen-readout ranking at 100L, where every shift arm loses to He — see [campaign 12](../12_frozen_readout/README.md).
 
 **Builds on.** Campaign [09](../09_rcfwd_rescale/README.md) (three-requirements frame, conditioning-vs-content 2×2), campaign [10](../10_rc_frozen_ends/README.md) (100L row-centered nets are not trainable through frozen windows; forward-scale death at `~1e-8` is a real failure mode, so a candidate whose 100L forward RMS is `6e-8` is a predicted failure, not a surprise), and W2's dying-neurons proof (`P[dead] → ½`), which this campaign independently confirms empirically.
 
@@ -180,7 +181,9 @@ At **100 layers** nothing survives: every arm including `he` is at or near chanc
 | 0.70 | 0.061 / 0.032 | 0.424 / 0.133 | True |
 | 0.75 | 0.062 / 0.032 | 0.055 / 0.035 | True |
 
-So the fork is **not** numerically negligible — it moves the per-layer weight gradient by a median 3–32% and up to 71%. **Recommend detached** (`relu_shift_detach=True`, now the config default), for three reasons:
+**Status after the 20-epoch smoke (2026-08-15): this recommendation is REOPENED.** The differentiable arm beat detached on *both* datasets — 0.9391 vs 0.9289 (fmnist) and 0.6011 vs 0.5931 (cifar10) — reproducing the pre-triage gap that this section dismissed as "not evidence". By the section's own stated terms ("if the 20-epoch smoke reproduces the gap, the recommendation should be revisited... the principled arguments are about *cleanliness of the comparison*, and would not outrank a reproducible training advantage"), the differentiable variant now has the better empirical case and the detached default should be re-decided rather than assumed. The original argument, unchanged, follows.
+
+So the fork is **not** numerically negligible — it moves the per-layer weight gradient by a median 3–32% and up to 71%. **Recommended detached at the time** (`relu_shift_detach=True`, now the config default), for three reasons:
 
 1. **It is the exact dual.** Row-centering is a pure weight-side constraint with no gradient modification of its own; its activation-space dual should be a pure forward-side intervention. The differentiable arm adds a coupling with no counterpart in row-centering, which would confound the very comparison the campaign exists to make.
 2. **It is the clean ablation.** Detached, the backward pass is bit-identical to plain He backprop, so any training difference is attributable *purely* to the forward/geometry change.
@@ -203,7 +206,44 @@ So the fork is **not** numerically negligible — it moves the per-layer weight 
 | `c=0.25` differentiable | 0.683 → 0.826 | 0.174 → 0.250 | 9.4e-1 – 4.3e+0 |
 | `c=0.70` | 0.118 → **0.139** | 0.102 → **0.103** | 2.4e-2 – 2.9e+0 |
 
-Three things worth carrying into the smoke triage. **(a)** The small-`c` arms train comparably to He and far better than `row_centered_he`, which is flat at chance on cifar10 — so DC removal on He weights is *not* inheriting row-centering's trainability failure at 30L. **(b)** At epoch 1 on cifar10, `c = 0.10` (0.273) is ahead of `he` (0.243). **(c)** `c = 0.70` — the best-geometry arm — is **stuck at chance on both datasets** with its minimum layer gradient already two orders of magnitude below the others. This is the requirement-(i)-vs-(iii) trade-off reproducing in training, exactly as the screen predicted, and it is the clearest single piece of evidence for the campaign's negative conclusion.
+Three things worth carrying into the smoke triage. **(a)** The small-`c` arms train comparably to He and far better than `row_centered_he`, which is flat at chance on cifar10 — so DC removal on He weights is *not* inheriting row-centering's trainability failure at 30L. **(b)** At epoch 1 on cifar10, `c = 0.10` (0.273) is ahead of `he` (0.243). **(c)** `c = 0.70` — the best-geometry arm — looks **stuck at chance on both datasets** at 2 epochs, with its minimum layer gradient two orders of magnitude below the others. This was written up as "the clearest single piece of evidence for the campaign's negative conclusion." **That reading was wrong, and the 20-epoch smoke refutes it** (§8): `c = 0.70` reaches 0.9291 / 0.5394, *beating* He on both datasets. It is a slow starter (0.1254 at epoch 1 on fmnist), not a dead arm, and 2 CPU epochs cannot tell those apart — which is exactly the limitation this section states about itself. The lesson generalises: a 2-epoch pre-triage is a GO/NO-GO on *crashes*, not evidence about *learning*.
+
+### 8. Training results (2026-08-15) — the negative verdict does not survive at 30L
+
+The 12 30-layer smokes ran on the cluster (20 epochs, NoBN, width 500, SGD lr 1e-2, bs 256, seed 42, no clipping).
+`eval_train_accuracy`, epoch 1 → epoch 20, from `reports/results/relushift_*_smoke_*_30L*.json`:
+
+| arm | fmnist | cifar10 | mean | vs `he` |
+|---|---|---|---|---|
+| **`c = 0.10`** | 0.6666 → 0.9246 | 0.2637 → **0.6374** | **0.7810** | **+1.4 / +13.2 pp** |
+| `c = 0.25` (differentiable) | 0.6877 → **0.9391** | 0.1817 → 0.6011 | 0.7701 | +2.8 / +9.6 pp |
+| `c = 0.25` | 0.6701 → 0.9289 | 0.1656 → 0.5931 | 0.7610 | +1.8 / +8.8 pp |
+| `c = 0.70` | 0.1254 → 0.9291 | 0.1032 → 0.5394 | 0.7342 | +1.8 / +3.4 pp |
+| `row_centered_he` | 0.1364 → 0.9020 | 0.1145 → 0.5480 | 0.7250 | −0.9 / +4.3 pp |
+| `he` | 0.7313 → 0.9107 | 0.2726 → 0.5052 | 0.7080 | baseline |
+
+**Every shift arm beats He on both datasets**, and `c = 0.10` does so by 13.2 points on cifar10. This is the first
+accuracy win over He by a new initializer anywhere in this project — campaign 09's best result was rcfwd reaching the
+*same* pass bar six epochs sooner (ep74 vs ep80), not a higher number.
+
+Three things the table settles:
+
+**The optimum is monotone in `c`, and it is small.** `0.10 > 0.25 > 0.70` by mean. Not the theoretically exact
+`1/√π ≈ 0.564`, and emphatically **not** the geometry-optimal `c ≈ 0.70–0.75` that §5 identified. Mild DC removal wins;
+aggressive DC removal is the worst shift arm. Whatever the shift is buying, it is not "better cosine geometry".
+
+**The init-time geometry screen is anti-correlated with training outcome, at least across this family.** §5 ranked
+`c = 0.65–0.75` best on mean pairwise cosine and worst on probe content; training ranks `c = 0.70` *last* among the
+shifts. Any future screening that gates cluster time on probe or cosine metrics — including the α-family screen parked
+as W3 — needs re-basing on a trained-readout metric (see [campaign 12](../12_frozen_readout/README.md)).
+
+**`row_centered_he` is fine at 30L**, reaching 0.9020 / 0.5480 from a chance-level start. Its failures in campaigns
+06/07/09 are depth failures, not a property of row-centering as such.
+
+**What this does not show.** These are 20-epoch smokes on the *train* set at 30 layers — a rate comparison, not a
+ceiling, and silent about generalization. The 18 audits are still ungated. And the ranking **inverts at 100 layers**:
+under campaign 12's frozen-readout protocol every shift arm loses to He. Depth and protocol are confounded between the
+two campaigns; the 30L frozen-readout arms (`frozenro_*_30L`) were queued to separate them.
 
 ## Reproduce
 
@@ -234,7 +274,7 @@ Pull back with `bash cluster/pull_results.sh 'relushift_*_smoke_*' 11_relu_shift
 ## Evidence & gaps
 
 - **Init-time evidence is complete**: 8 screen JSONs (3 depths × 2 datasets + 2 per-sample controls), the funnel, the duality check, the no-op verification, and 2 pre-triage JSONs — all in `reports/results/`, all reproducible by the commands above.
-- **Gap — no training results yet.** The 36 `.sub` files (18 smoke + 18 audit) are written and the runner is locally smoke-tested, but the agent that built this campaign had no cluster access. Nothing in §Findings depends on them; every number above is init-time or 2-epoch-CPU.
+- **Training results landed 2026-08-15** (§8): the 12 30L smokes ran; `reports/results/relushift_*_smoke_*_30L*.json`. The six **100L** smokes were deliberately **not** submitted — campaign 10 showed end-to-end training at 100L fails for *every* initialization (rcfwd: 0.1746 with all layers trainable vs 0.8335 with three), so a 100L end-to-end arm would measure that, not DC removal. The 100L question is answered by [campaign 12](../12_frozen_readout/README.md)'s frozen-readout protocol instead. The 18 audits remain ungated.
 - **Gap — the norm-control experiment is not run.** "The shift preserves input geometry better than He at 30L" (§5) is stated on distance correlation and k-NN. The brief's caveat that He may be surviving on *norm* rather than *angular* information is not yet tested, and until it is, §5 is a measurement, not an interpretation.
 - **Open recommendation, deliberately not acted on: the per-sample RMS variant** (§2). It makes the closed-form theory exact, restores monotonicity in `c`, puts the optimum back at `c = 1/√π`, reaches cosine 0.0037 at 100 layers, and removes the batch-dependence wart — but it was outside the brief's settled scope, so it is flagged for the oracle rather than added to the grid. It does not resolve the requirement-(ii) conflict: `G(1/√π) = r < 1` regardless of how the RMS is computed, so the `r^L` forward decay survives.
 - The `c` grid is 0.05-resolution near the interesting region but 0.1 elsewhere; the 30L fmnist optimum (`c = 0.65`, cos 0.089) is bracketed but not resolved to better than ±0.05.

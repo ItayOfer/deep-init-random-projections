@@ -93,9 +93,25 @@ PASS_ACCURACY = 0.99   # advisor 2026-08-15; loss condition dropped
 
 # Smoke grid: the arms the local screen justifies carrying to training, sized to
 # campaign 10 (16 smoke jobs) plus 2 fork controls. See README.md "What ran".
+#
+# 2026-08-15: the 100L row was widened from ("he","rc","c025") to ALL arms.
+# 100 layers is the thesis's canonical depth -- it is where geometric collapse
+# actually bites -- and the 30L smokes showed the shift arms BEAT He there, with
+# c=0.10 the winner. c010 had no 100L cell at all, so the one arm that won at 30L
+# could not be tested at the depth the thesis is about.
+#
+# An earlier decision skipped the 100L cells on the premise that end-to-end
+# training at 100L fails for every initialization. That premise is false: He
+# trains at 100L NoBN (reports/results/recovery_plain_sgd_fmnist_100L_nobn.json,
+# train 0.9953 / test 0.8633 at 152 ep). What fails at 100L is the ROW-CENTERED
+# family (rcfwd_rescale_audit_fmnist_100L: 0.1679 / 0.1672). So He is a real
+# baseline to beat at 100L, not a floor of chance, and the comparison is sharp.
+#
+# rcfwd is not an arm here; its 100L end-to-end result already exists in
+# campaign 09 (rcfwd_rescale_audit_*_100L) -- cite it rather than re-running.
 SMOKE_CELLS = (
     [("30L", arm, ds) for arm in ARMS for ds in DATASETS]
-    + [("100L", arm, ds) for arm in ("he", "rc", "c025") for ds in DATASETS]
+    + [("100L", arm, ds) for arm in ARMS for ds in DATASETS]
 )
 EXPERIMENT_LABELS = (
     [f"relushift_{arm}_{mode}_{ds}_{depth}"
