@@ -81,6 +81,12 @@ class ClassifierConfig:
     # forward-balanced backward amplification g_bwd = 1/r with r = sqrt((pi-1)/pi)
     # ~ 0.826. None disables it (standard backprop).
     grad_rescale: Optional[float] = None
+    # Restrict training to a subset of layers (FC only): requires_grad=False on
+    # every Linear layer NOT named here (weight and bias), backprop still runs
+    # through frozen layers unchanged. Names: "fc<N>" (1-indexed hidden layer,
+    # fc1..fc<depth>) or "head" (final classifier layer). None = all trainable
+    # (standard behavior, no freezing).
+    trainable_layers: Optional[List[str]] = None
 
 
 @dataclass

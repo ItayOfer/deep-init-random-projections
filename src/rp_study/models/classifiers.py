@@ -47,6 +47,7 @@ class DeepFCClassifier(nn.Module):
         bn_momentum: float = 0.1,
         bn_eps: float = 1e-5,
         grad_rescale: Optional[float] = None,
+        trainable_layers: Optional[List[str]] = None,
         **init_kwargs,
     ) -> None:
         super().__init__()
@@ -89,6 +90,28 @@ class DeepFCClassifier(nn.Module):
             n_layers=n_weight_layers,
             **init_kwargs,
         )
+
+        if trainable_layers is not None:
+            self._freeze_except(trainable_layers)
+
+    def _freeze_except(self, trainable_layers: List[str]) -> None:
+        """Set requires_grad=False on every Linear param NOT in trainable_layers.
+
+        Only touches leaf parameters (weight/bias) -- forward/backward still
+        run through frozen layers unchanged, so gradients keep flowing to
+        earlier trainable layers via the input-grad path.
+        """
+        trainable_set = set(trainable_layers)
+        for layer_index, linear in enumerate(self.hidden_layers):
+            requires_grad = f"fc{layer_index + 1}" in trainable_set
+            for param in linear.parameters():
+                param.requires_grad = requires_grad
+        head_requires_grad = "head" in trainable_set
+        for param in self.classifier.parameters():
+            param.requires_grad = head_requires_grad
+
+    def trainable_tensor_count(self) -> int:
+        return sum(1 for p in self.parameters() if p.requires_grad)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.ndim > 2:
@@ -244,6 +267,7 @@ def build_classifier(config: ClassifierConfig) -> nn.Module:
             bn_momentum=config.bn_momentum,
             bn_eps=config.bn_eps,
             grad_rescale=config.grad_rescale,
+            trainable_layers=config.trainable_layers,
             **kwargs,
         )
     if config.architecture == "cnn":
