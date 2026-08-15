@@ -30,6 +30,13 @@ Figures land in `reports/figures/gain_funnels/` and `reports/figures/rcfwd_resca
 | `content_probe_linear.py` | Scale-invariant content probes (cosine k-NN + linear probe) at the trained depths for He vs rcfwd init → `content_probe_linear.json` |
 | `content_profile_per_layer.py` | Linear-probe accuracy vs layer index at init, width 500 — where content dies per init family → `content_profile_per_layer.{json,png}` |
 
+## Recipe decomposition & initialization screens
+
+| Script | Shows |
+|---|---|
+| `recipe_decomposition_funnel.py` | The rcfwd recipe split into its two interventions (init change vs `_GradRescale`): per-layer activation RMS and parameter-gradient norm for all four corners of the 2×2 → `recipe_decomposition_funnel.json`, `reports/figures/rc_frozen_ends/` |
+| `relu_shift_geometry_screen.py` | Init-time screen of the post-ReLU DC-removal family (`a = relu(Wx) − c·rms(a)`) on all three requirements — mean pairwise cosine, cosine k-NN content, dataset-dead fraction, activation RMS, distance correlation vs the input → `relu_shift_geometry_screen.json`, `reports/figures/relu_shift/` |
+
 ## Depth / gradient diagnostics
 
 | Script | Shows |

@@ -165,7 +165,10 @@ For initialization comparison experiments on real training (not just geometry/gr
 - Diagnostics: set `diagnostics_every=N` to log per-layer gradient L2 norms + BN running stats every N epochs. Set `log_grad_per_layer=True` for the full per-layer gradient vector. The training loop also records `learning_rate` every epoch automatically.
 - `ClassifierConfig.grad_rescale=r` inserts the `_GradRescale` op (identity forward, gradient × r in backward) after each hidden ReLU — the rcfwd mechanism.
 - Checkpoints: set `checkpoint_dir` + `checkpoint_every`; resume with `resume_checkpoint`.
-- Primary thesis metric: `eval_train_accuracy` (full train set in `model.eval()` mode). Pass criterion: `eval_train_accuracy ≥ 0.995` AND `eval_train_loss ≤ 0.10`.
+- Primary thesis metric: `eval_train_accuracy` (full train set in `model.eval()` mode). Pass criterion:
+  - **Campaigns 01–10 (historical record):** `eval_train_accuracy ≥ 0.995` **AND** `eval_train_loss ≤ 0.10`. The headline counts cited throughout the thesis (He 10/12, V2 5/12) are on this criterion — do not retroactively relabel them.
+  - **Campaign 10-onward (advisor, 2026-08-15):** `eval_train_accuracy ≥ 0.99`; the loss condition is **dropped**. Justified by campaign 10, where a cell sat at chance accuracy while its loss climbed past `ln 10` — the two metrics decouple in the frozen-window regime. A scan of every committed JSON found exactly two runs that flip under the new rule (both in `fnn_he_bn_evaltrain_training.json`), and both flip on the accuracy threshold, not the dropped loss condition.
+  - Always log **both** metrics regardless of which criterion gates the run.
 
 ### When adding a new scheduler
 
