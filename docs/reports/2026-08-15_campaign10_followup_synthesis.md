@@ -193,11 +193,34 @@ Run in the scale-relative form `a ← relu(Wx) − c·rms(a)`, swept over `c`. *
 | `row_centered_he` | 0.9020 / 0.8394 | 0.5480 / 0.4327 | −1.6 / +4.9 pp |
 | `he` | 0.9107 / 0.8557 | 0.5052 / 0.3835 | baseline |
 
-**Every DC-removal arm beats He on CIFAR-10 held-out accuracy**, by 3.5–6.7 points. On Fashion-MNIST the arms are within ±1 point of He, i.e. a wash. This is the first accuracy win over He by a new initializer in the project — campaign 09's best result was reaching the *same* bar six epochs sooner, not a higher number.
+**Read at the final epoch — which is the wrong way to read it.** He's CIFAR-10 test accuracy oscillates between 0.38 and 0.47 across the last eight epochs and lands on its *worst* value at epoch 20 (max 0.4665 at ep15, final 0.3835 — an 8.3-point drop). Recomputed robustly, the effect disappears:
+
+| CIFAR-10 test, vs He | final epoch | mean last 5 | best epoch |
+|---|---|---|---|
+| `c = 0.10` | +6.6 pp | +2.1 pp | **+0.2 pp** |
+| `c = 0.25` | +5.6 pp | +0.2 pp | −2.3 pp |
+| `c = 0.70` | +3.5 pp | −1.4 pp | −4.0 pp |
+| `row_centered_he` | +4.9 pp | −1.7 pp | −1.6 pp |
+
+There is **no established win at 30 layers**. What survives is "`c = 0.10` is not worse, and may be marginally better, within run-to-run variance."
+
+**And at 100 layers it loses outright** — the thesis's canonical depth, same recipe, all five arms (best-epoch test):
+
+| arm | fmnist | vs He | cifar10 | vs He |
+|---|---|---|---|---|
+| **`he`** | **0.2753** | — | **0.3571** | — |
+| `c = 0.10` | 0.2047 | −7.1 pp | 0.1000 | **−25.7 pp** |
+| `c = 0.25` | 0.1755 | −10.0 pp | 0.1326 | −22.4 pp |
+| `row_centered_he` | 0.1233 | −15.2 pp | 0.1026 | −25.4 pp |
+| `c = 0.70` | 0.1001 | −17.5 pp | 0.1104 | −24.7 pp |
+
+On CIFAR-10 every DC-removal arm is pinned at chance while He trains — a qualitative failure, not a slower rate. **Caveat:** these are 20-epoch smokes and He needs ~152 epochs to reach 0.9953 at 100L NoBN, so all arms are in early transient; but chance-vs-0.357 is not a transient difference. The 18 audits remain ungated.
+
+**None of this is a win.** Campaign 09's best prior result was rcfwd reaching the *same* bar six epochs sooner than tuned He; today adds no higher number. What today does add is that the DC-removal route — pursued in this thesis since the beginning, in both its weight-space and activation-space forms — is now closed with evidence at the depth that matters.
 
 Two structural facts:
 
-- **The optimum is monotone in `c`, and small.** `0.10 > 0.25 > 0.70`. Not the theoretically exact `1/√π ≈ 0.564`, and emphatically not the geometry-optimal `c ≈ 0.70–0.75`. Mild DC removal wins; aggressive DC removal is the worst shift arm.
+- **The ordering in `c` is consistent across depths and metrics.** `0.10 > 0.25 > 0.70` at 30L and at 100L. So *if* the shift has any value it is at small `c` — not the theoretically exact `1/√π ≈ 0.564`, and emphatically not the geometry-optimal `c ≈ 0.70–0.75`. The best-geometry arm is reliably the worst trainer.
 - **The differentiable fork beats the detached one on both datasets**, reproducing a gap that campaign 11 had dismissed as noise. That recommendation is now reopened.
 
 And the mechanism behind the original intuition checks out: every `c ≤ 0.75` variant sits at 0–1.4% dataset-dead units against He's 34–48%. Killing the DC does stop neurons dying.
@@ -214,7 +237,7 @@ This is why train and test must both be reported. Reading train alone produced t
 
 ### 5.2 The protocol/depth question, and why it dissolved
 
-Campaign 11 (30L, end-to-end) says DC removal beats He. Campaign 12 (100L, frozen readout) says every shift arm loses to He. Those differed in *both* depth and protocol, so neither attributed. Running the frozen-readout protocol at 30L separates them:
+For most of the day the evidence looked contradictory: 30L end-to-end appeared to favour DC removal, while 100L frozen-readout clearly favoured He. Those two cells differ in *both* depth and protocol, so neither attributed. Two runs settled it — the frozen-readout protocol at 30L, and the end-to-end protocol at 100L:
 
 **Frozen readout, 20 epochs** (train / test):
 
@@ -232,8 +255,6 @@ Campaign 11 (30L, end-to-end) says DC removal beats He. Campaign 12 (100L, froze
 **The 100L end-to-end arms dissolved that.** They were the empty cell in the 2×2, and they came back with He ahead by 7–26 points (§4.3). Combined with the 30L end-to-end win evaporating under robust statistics, the picture is simply: **He is ahead or level everywhere**. There is no protocol/depth tension to explain, and the "better-conditioned optimization problem" hypothesis has no support.
 
 What the frozen-readout table *does* establish independently is the depth axis: at 30 layers He's readout reaches **0.5481 test** with train ≈ test; at 100 layers it is at chance. Class content dies between depth 30 and depth 100 — the campaign-09 claim, now measured on held-out data.
-
-A second signal in the same table: at 30 layers He's frozen readout gets **0.5481 test** with train ≈ test (no memorization at 20 epochs). At 100 layers it is at chance. So class content really does die between depth 30 and depth 100 — exactly the campaign-09 claim.
 
 ### 5.3 The probe screen is vindicated
 
