@@ -74,15 +74,24 @@ from rp_study.models.classifiers import build_classifier
 from run_diagnostic import _result_to_payload, print_diagnostic_summary
 
 WIDTH = 500
-DEPTH = 100
+DEPTHS = (30, 100)
 LEARNING_RATE = 1e-2
 PASS_ACCURACY = 0.99
 R = math.sqrt((math.pi - 1.0) / math.pi)      # 0.8256
 
-# The readout: last two hidden layers only. The head stays frozen, exactly as in
-# campaign 10, so every arm is read through the same fixed random lens and the
-# comparison is about the frozen stack, not about the classifier.
-TRAINABLE_LAYERS = ["fc99", "fc100"]
+
+def trainable_layers(depth: int) -> list:
+    """The readout: last two hidden layers only, head always frozen.
+
+    Depth-relative so the protocol is identical at every depth -- at 100L this
+    is ["fc99","fc100"], byte-identical to the original 100L-only version, so
+    the ten committed frozenro_*_100L results remain reproducible.
+
+    Campaign 11 (30L, end-to-end) and campaign 12 (100L, frozen readout)
+    disagree about whether DC removal beats He, but they differ in BOTH depth
+    and protocol. Running this protocol at 30L too separates the two.
+    """
+    return [f"fc{depth - 1}", f"fc{depth}"]
 
 ARMS = {
     "he":    {"init_strategy": "he",                            "relu_shift": None, "grad_rescale": None},
@@ -95,22 +104,25 @@ ARMS = {
 DATASETS = {"fmnist": "fashion_mnist", "cifar10": "cifar10"}
 
 EXPERIMENT_LABELS = [
-    f"frozenro_{arm}_{mode}_{ds}_100L"
-    for arm in ARMS for mode in ("smoke", "audit") for ds in DATASETS
+    f"frozenro_{arm}_{mode}_{ds}_{depth}L"
+    for arm in ARMS for mode in ("smoke", "audit")
+    for ds in DATASETS for depth in DEPTHS
 ]
 
 
-def _parse_label(label: str) -> Tuple[str, str, str]:
-    """frozenro_<arm>_<mode>_<dataset>_100L -> (arm, mode, dataset)."""
+def _parse_label(label: str) -> Tuple[str, str, str, int]:
+    """frozenro_<arm>_<mode>_<dataset>_<depth>L -> (arm, mode, dataset, depth)."""
     parts = label.split("_")
-    assert parts[0] == "frozenro" and parts[-1] == "100L" and len(parts) == 5, (
+    assert parts[0] == "frozenro" and len(parts) == 5 and parts[-1].endswith("L"), (
         f"unexpected label shape: {label!r} parts={parts}"
     )
     arm, mode, dataset = parts[1], parts[2], parts[3]
+    depth = int(parts[4][:-1])
     assert arm in ARMS, f"unknown arm {arm!r} in {label!r}"
     assert mode in ("smoke", "audit"), f"unknown mode {mode!r} in {label!r}"
     assert dataset in DATASETS, f"unknown dataset {dataset!r} in {label!r}"
-    return arm, mode, dataset
+    assert depth in DEPTHS, f"unknown depth {depth!r} in {label!r}"
+    return arm, mode, dataset, depth
 
 
 def _check_label_roundtrips() -> None:
@@ -118,8 +130,8 @@ def _check_label_roundtrips() -> None:
     run the wrong ARM under the right filename -- the worst failure available
     here, since the arm IS the independent variable."""
     for label in EXPERIMENT_LABELS:
-        arm, mode, dataset = _parse_label(label)
-        rebuilt = f"frozenro_{arm}_{mode}_{dataset}_100L"
+        arm, mode, dataset, depth = _parse_label(label)
+        rebuilt = f"frozenro_{arm}_{mode}_{dataset}_{depth}L"
         assert rebuilt == label, f"round-trip FAILED: {label!r} -> {rebuilt!r}"
 
 
@@ -129,13 +141,13 @@ _check_label_roundtrips()
 def _build(label: str, epochs: int, log_per_batch_first_epoch: bool,
            log_grad_per_layer: bool, learning_rate: float,
            target_train_accuracy: Optional[float]) -> Tuple[ClassifierConfig, TrainingConfig]:
-    arm, _mode, dataset_key = _parse_label(label)
+    arm, _mode, dataset_key, depth = _parse_label(label)
     cfg = ARMS[arm]
 
     cc = ClassifierConfig(
-        architecture="fc", depth=DEPTH, init_strategy=cfg["init_strategy"],
+        architecture="fc", depth=depth, init_strategy=cfg["init_strategy"],
         use_batch_norm=False, fc_hidden_dim=WIDTH,
-        trainable_layers=TRAINABLE_LAYERS,
+        trainable_layers=trainable_layers(depth),
         relu_shift=cfg["relu_shift"],
         relu_shift_detach=True,          # the exact dual; see campaign 11 README §6
         grad_rescale=cfg["grad_rescale"],
@@ -171,7 +183,7 @@ def main() -> None:
     args = parser.parse_args()
 
     label = args.experiment
-    arm, mode, dataset_key = _parse_label(label)
+    arm, mode, dataset_key, depth = _parse_label(label)
     epochs = args.epochs if args.epochs is not None else (20 if mode == "smoke" else 400)
     log_per_batch = (mode == "smoke")
     log_grad_per_layer = (mode == "smoke")
@@ -198,17 +210,17 @@ def main() -> None:
     banner_model = build_classifier(classifier_config)
     n_trainable = banner_model.trainable_tensor_count()
     shift_live = getattr(banner_model, "relu_shift", "MISSING")
-    expected_tensors = 2 * len(TRAINABLE_LAYERS)
+    expected_tensors = 2 * len(trainable_layers(depth))
     del banner_model
 
     print(f"\n{'#'*64}")
-    print(f"# {label}  (mode={mode}, arm={arm}, dataset={dataset_key})")
+    print(f"# {label}  (mode={mode}, arm={arm}, dataset={dataset_key}, depth={depth}L)")
     print(f"# init={classifier_config.init_strategy}  relu_shift={classifier_config.relu_shift}  "
           f"grad_rescale={classifier_config.grad_rescale}")
     print(f"# model.relu_shift={shift_live!r} (must equal config; MISSING => stale bytecode)")
     print(f"# trainable_layers={classifier_config.trainable_layers} (head FROZEN)")
     print(f"# trainable tensors={n_trainable} (expect {expected_tensors})")
-    print(f"# depth={DEPTH} width={WIDTH} bn={classifier_config.use_batch_norm}")
+    print(f"# depth={classifier_config.depth} width={WIDTH} bn={classifier_config.use_batch_norm}")
     print(f"# optimizer={training_config.optimizer} lr={training_config.learning_rate} "
           f"bs={training_config.batch_size} scheduler={training_config.scheduler}")
     print(f"# grad_clip_max_norm={training_config.grad_clip_max_norm} (must be None)")
