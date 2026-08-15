@@ -71,14 +71,28 @@ if [[ "${USE_TAR}" -eq 1 ]]; then
   TAR_EXCLUDES=()
   for pattern in "${EXCLUDES[@]}"; do TAR_EXCLUDES+=(--exclude="${pattern}"); done
   TAR_EXCLUDES+=(--exclude='./data')          # top-level dataset dir only
+
+  # macOS bsdtar embeds Apple metadata (com.apple.provenance, FinderInfo, BSD
+  # fflags) that GNU tar on the cluster does not understand, producing one
+  # "Ignoring unknown extended header keyword" warning PER FILE -- thousands of
+  # lines that bury the real output. None of it is meaningful for source code on
+  # Linux. Probe for each flag rather than assuming, so this stays portable to a
+  # GNU-tar client. COPYFILE_DISABLE additionally suppresses AppleDouble ._*.
+  export COPYFILE_DISABLE=1
+  TAR_META_FLAGS=()
+  for flag in --no-mac-metadata --no-xattrs --no-fflags; do
+    if tar czf /dev/null "${flag}" -T /dev/null >/dev/null 2>&1; then
+      TAR_META_FLAGS+=("${flag}")
+    fi
+  done
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "(dry run: listing what would be sent, not transferring)"
     # bsdtar (macOS) writes the -v listing to stderr; fold it into stdout so the
     # list is greppable/pipeable the way a dry run should be.
-    tar czf /dev/null -v "${TAR_EXCLUDES[@]}" -C "${PROJECT_ROOT}" . 2>&1
+    tar czf /dev/null -v "${TAR_META_FLAGS[@]}" "${TAR_EXCLUDES[@]}" -C "${PROJECT_ROOT}" . 2>&1
     exit 0
   fi
-  tar czf - "${TAR_EXCLUDES[@]}" -C "${PROJECT_ROOT}" . \
+  tar czf - "${TAR_META_FLAGS[@]}" "${TAR_EXCLUDES[@]}" -C "${PROJECT_ROOT}" . \
     | ssh "${REMOTE}" "mkdir -p ${REMOTE_DIR} && tar xzf - -C ${REMOTE_DIR}"
 else
   RSYNC_EXCLUDES=()
