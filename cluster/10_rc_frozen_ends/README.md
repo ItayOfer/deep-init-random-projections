@@ -88,7 +88,72 @@ This campaign was partly motivated by a live disagreement about *why* campaign 0
 
 **Net verdict on H1 vs H2: neither is universally right — the resolution is which layer you're standing at.** `last3`'s raw-pass death was a **scale** problem (H1-adjacent: fixing the numerical/forward-scale issue reveals real signal), not a **content** problem — it does *not* support the strong form of "content is already dead by layer 25" applied literally at layers 98–100, at least not to the point of zero exploitable signal. `first3`'s failure under both recipes is unambiguously **not** a gradient-conditioning problem (H2-consistent) — it is something about how a small, local, well-trained change at the front interacts with 97 fixed, untouched downstream layers, which the corrected recipe does nothing to fix because it doesn't touch that mechanism. Practically: if the goal is to get *some* trainable signal into a 100L row-centered stack via a small subset of layers, the tail is the promising end (slow but real), and the front is a dead end regardless of gradient conditioning.
 
+## 2026-08-15 continuation (W5): 2-layer windows + the missing 2x2 corners
+
+Brief: [`docs/plans_handoffs/briefs/2026-08-15_campaign10-2layer-windows-and-recipe-ablation.md`](../../docs/plans_handoffs/briefs/2026-08-15_campaign10-2layer-windows-and-recipe-ablation.md). Two advisor follow-ups from the 2026-08-15 meeting, answered in this campaign directory: (1) redo the frozen windows one layer narrower (`last2={fc99,fc100}`, `first2={fc1,fc2}`, head frozen in both, same symmetric design as `last3`/`first3`) and push the one working cell (`last3`/rcfwd) to a real accuracy target instead of a 20-epoch smoke; (2) run the two corners of the (init x grad_rescale) 2x2 that campaigns 09/10 never ran, so "the rcfwd recovery was a forward-scale artifact" becomes a measurement rather than an inference.
+
+**Status: runner + submission infrastructure complete and locally verified; no cluster jobs have been run yet.** This agent session has no SSH/scp/sbatch access to the cluster (the same constraint noted in the brief as having stalled this campaign's first pass). Everything through "Local verification" below is done and checked against the code/math directly; everything after that is marked PENDING, with the exact handoff commands in Reproduce.
+
+### Runner changes
+
+`run_rc_frozen_ends.py` gained, additively -- no existing label's resolved config changed:
+
+- Two new recipes in `RECIPES`/`RECIPE_SUFFIX`, decomposing rcfwd into its two independent interventions (init change (A), backward `grad_rescale` (B) -- see the oracle note on W5 in `docs/plans_handoffs/FRONTIER.md`):
+  - `rawrescale` (suffix `_rawrescale`) = `row_centered_he` + `grad_rescale=r` -- **(B) only**, "correction for the backward only."
+  - `fwdbal` (suffix `_fwdbal`) = `row_centered_forward_balanced`, no rescale -- **(A) only**.
+  - (`raw` = neither, `rcfwd` = both -- both unchanged from the original campaign.)
+- Two new conditions in `TRAINABLE_LAYERS`: `first2=["fc1","fc2"]`, `last2=["fc99","fc100"]`. `first3`/`last3` untouched, so the 8 committed JSONs stay reproducible from the same labels.
+- `--target-train-accuracy` (wires the pre-existing `TrainingConfig.target_train_accuracy`, default `None` — unchanged existing behavior for every label that doesn't pass it) and `--target-patience`.
+- A `rawrescale` LR ladder (`RAWRESCALE_LR_LADDER` / `RAWRESCALE_LADDER_LABELS`): 4 extra fully-qualified smoke labels per (condition, dataset) beyond the control point, e.g. `rcfrozen_last2_smoke_fmnist_100L_rawrescale_lr1e6`. The numeric LR is never parsed back out of the label string -- each ladder `.sub` passes `--lr` explicitly (see `_strip_lr_ladder_tag`'s docstring for why).
+
+### `_parse_label` rewrite — the highest-risk edit, verified two ways
+
+The old `label.endswith("_rcfwd")` check does not generalize safely to 4 recipes: `RECIPE_SUFFIX["raw"] == ""`, and checking suffixes in plain dict/insertion order would match **every** label as `"raw"` first, since an empty suffix `endswith()`-matches everything. Fixed by trying suffixes longest-first (`_RECIPE_SUFFIX_ORDER`, computed by sorting on suffix length descending — `raw`'s `""` is necessarily last) and adding `_check_label_roundtrips()`, which runs unconditionally at **import time** over all 80 entries of `EXPERIMENT_LABELS` (64 base grid + 16 rawrescale-ladder) and asserts each parses back to exactly the components used to build it.
+
+1. **The self-test passes as written.** `python3 -c "import run_rc_frozen_ends"` succeeds silently — the assertion loop runs at import time, so a regression would raise `AssertionError` before any argparse call, on the very first invocation.
+2. **The self-test is not vacuous — confirmed by deliberately reproducing the bug it guards against.** Simulating the naive insertion-order check (`for recipe, suffix in RECIPE_SUFFIX.items(): if label.endswith(suffix): return recipe`) against every `EXPERIMENT_LABELS` entry mis-parses **64 of 80** labels as `"raw"` — everything except the 16 labels that are genuinely `raw`. Example: `rcfrozen_first3_smoke_fmnist_100L_rcfwd` → naive parse = `raw`, correct = `rcfwd`. This is exactly the failure mode the brief flagged: silently running the wrong recipe under the right filename, with no error.
+
+### Local verification (CPU, before any cluster sync — per the brief's constraint)
+
+- **Freeze mechanics, first2/last2, both raw and rcfwd:** `trainable_tensor_count()==4` in all four cases (2 layers × {weight, bias}); after one backward pass, nonzero gradient at exactly `{fc1,fc2}` (first2) or `{fc99,fc100}` (last2) and zero everywhere else, including the head. Matches the brief's "trainable tensors=4 (expect 4)" requirement exactly.
+- **All four recipes build and run one forward/backward step without exception** on `last2` (raw, rcfwd, rawrescale, fwdbal) — finite loss at init in all four.
+- **`--target-train-accuracy` plumbing:** a 3-epoch CPU run (512 fmnist train samples, `last2`/rcfwd, `target_train_accuracy=0.99`, `target_patience=1`) completes cleanly with `stop_reason=max_epochs` (0.99 correctly not reached on 3 tiny epochs over a 512-sample subset — no false trigger) — confirms the flag is wired without crashing.
+
+### The 2x2 ablation table (init-time — already measured, re-verified here field-by-field)
+
+100L, width 500, batch 128, seed 42 — `reports/results/recipe_decomposition_funnel.json`, produced by `scripts/recipe_decomposition_funnel.py` on 2026-08-15, before this brief was written. Reproduced here with exact field names so every number traces directly:
+
+| corner | `init_strategy` | `grad_rescale` | `activation_rms[-1]` (L100) | `grad_norm_per_layer[0]` (fc1) | `grad_norm_per_layer[-1]` (fc100) | `grad_max_over_min` |
+|---|---|---|---|---|---|---|
+| `raw` | `row_centered_he` | `None` | 5.009e-9 | 1.906 | 1.149e-8 | 1.659e8 |
+| `raw+rescale` (`rawrescale`) | `row_centered_he` | `r=0.82565` | 5.009e-9 (bit-identical to raw) | 9.109e-9 | 9.484e-9 | **1.127** |
+| `fwdbal` | `row_centered_forward_balanced` | `None` | 1.2551 | 4.612e8 | 3.427 | 1.346e8 |
+| `rcfwd` | `row_centered_forward_balanced` | `r=0.82565` | 1.2551 | 2.204 | 2.829 | 1.353 |
+
+Three consequences, load-bearing for the grid design (per the brief) and for the local-verification surprise below:
+
+1. `raw+rescale`'s activations are **provably** bit-identical to `raw`'s — `_GradRescale.forward` is `return x` (identity), so this is a property of the autograd Function, not a measurement that could come out otherwise. Any explanation of `last3`/`last2`'s recovery that runs through *activations* must therefore be an (A) story (the init change), since (B) (the rescale) cannot touch the forward pass at all.
+2. `raw+rescale` has the flattest gradient profile of all four corners (1.127× across 100 layers — flatter than rcfwd's 1.353×) but pinned at ≈9e-9. The analytically-matched LR is `1e-2 / R**100 = 2,092,427` (`R=0.8256452711765564`, `R**100=4.779e-9`, computed directly here — not just "≈2e6") — this is *why* the suggested ladder brackets `1e6`–`1e7` with `1e2`/`1e4` as intermediate rungs. The `lr=1e-2` control point is analytically guaranteed inert (a ≈9e-9-scale gradient at that LR moves weights by ≈9e-11 per step) — this is known **before running anything**, from the funnel numbers alone.
+3. `fwdbal`'s `grad_norm_per_layer[0]` (fc1, 4.6e8) is the number the brief's "expected to abort" language is built on — but that is the gradient **at fc1**, not at fc99/fc100. See next section: freezing changes which of these numbers a given trainable window ever actually sees.
+
+### A brief-vs-measurement discrepancy, found by the mandated local check: `last2`/`fwdbal` does not abort
+
+The brief's smoke-grid item 3 says `{last2} × {fmnist,cifar10} × {fwdbal}` is "expected to abort; documented as such." Running the mandated freeze-mechanics check on this specific corner surfaced a real discrepancy, reported here rather than silently reworded away:
+
+- **Why the brief's expectation doesn't hold for `last2` specifically.** `fwdbal`'s exploding gradient (4.6e8) lives at **fc1** and decays monotonically to a near-normal ≈3.4 by fc100 (funnel table above) — the blow-up is concentrated at the *front*, where backward-gain compounding (`1/r` per layer, uncancelled) has the most layers to compound over. `last2` only trains fc99/fc100. Because `requires_grad=False` on fc1–fc98 means autograd's graph-construction rule ("a node requires grad iff at least one of its inputs does") makes the *activation* flowing out of fc98 have `requires_grad=False` too, PyTorch never builds — let alone computes — a backward path into the frozen fc1–fc98 stack at all. `last2`'s optimizer only ever sees fc99/fc100's own gradient, which the funnel table already shows is ≈3–4 at init, nowhere near 4.6e8.
+- **Verified locally (CPU, small subsample — NOT the committed cluster result):** 5-epoch run, 4000 fmnist train samples, `last2`/fwdbal: loss falls steadily (3.24 → 2.67), train acc climbs (10.5% → 14.3%), trainable-layer grad norms stay in a healthy 2–4 range across all 5 epochs — **no abort**, real if slow learning, structurally similar in character to `last3`/rcfwd's original 20-epoch trajectory. The same setup on `first2`/fwdbal (not part of the brief's grid) **does** abort as expected: `status=diverged`, `stop_reason=non_finite_loss`, NaN loss at epoch 1 batch 4 — confirming the funnel's front-loaded-explosion mechanism is real, just not exercised by a tail-only trainable window.
+- **What this means, and what's still open.** This is informative either way (per the brief: "a clean documented abort IS the result" — so is a clean documented non-abort). If the real 20-epoch GPU smoke on the full dataset confirms the local finding, it would mean that for the *tail* specifically, (A) alone (the forward-balanced init) is enough to get real learning with no backward correction at all — sharpening the campaign's central question. The local check is only 5 tiny-batch CPU epochs on a 4000-sample subset, not a substitute for the actual 20-epoch full-dataset GPU run the brief specifies, which is still queued (see Reproduce). `first2`/fwdbal was not added to the submission grid — out of the brief's explicit scope, which names only `last2` — but is noted here as a natural, cheap follow-up if the advisor wants the predicted-explosion corner measured directly on the cluster.
+
+### 2-layer vs 3-layer windows, and the isolation verdict — both PENDING cluster execution
+
+Everything above (self-test, freeze mechanics, the 2×2 table, the fwdbal finding) is either a structural property of the code/math or a small local CPU check. **No 20-epoch or 400-epoch GPU run has been executed for any new label in this section** — this agent session cannot reach the cluster (see Reproduce for the exact handoff). Consequently:
+
+- The "2-layer results next to the 3-layer ones" table the brief asks for cannot be filled in yet beyond the structural check above (trainable-tensor count, gradient location). Once the smoke grid runs, add a table here in the same shape as the raw-recipe and rcfwd-recipe tables under Findings/H1-vs-H2 above.
+- **The isolation verdict is therefore partial.** Already established without needing a new run: (a) any activation-side story about `last3`'s recovery must be an (A) story, never a (B) story (proven, not measured — `_GradRescale` is forward-identity by construction); (b) `raw+rescale`'s `lr=1e-2` control point is analytically inert, so the ladder's higher rungs are the earliest point this corner could show anything at all; (c) `last2`/fwdbal's local non-abort is suggestive that (A) alone may already do most of the tail's work, matching the general character of `last3`/rcfwd's slow-but-real recovery. **Not yet known:** whether `rawrescale` moves at all once the LR reaches the ≈2.09e6 neighborhood (the (B)-only, at-scale test); whether `fwdbal`'s local non-abort survives the full dataset and 20 real epochs; whether `last2`/`last3` under rcfwd actually reach the 0.99 target, and in how many epochs. Filling this in is the next session's first job once the jobs below have run.
+
 ## Reproduce
+
+### Original 3-layer campaign (raw/rcfwd, first3/last3) — already run, JSONs committed
 
 ```bash
 cd ~/thesis   # after sync; clear __pycache__ first (config.py gained a new field)
@@ -104,9 +169,66 @@ done
 
 Pull back with `bash cluster/pull_results.sh 'rcfrozen_*_smoke_*' 10_rc_frozen_ends`. Logs end with `SUMMARY <label> | PASS/fail | ...`.
 
+### W5 continuation (2026-08-15) — prepared, verified locally, NOT yet submitted
+
+**This agent session cannot SSH/scp/sbatch to the cluster.** The 34 new `.sub` files below are written, and every one of them was dry-run through the real `argparse` → `_build()` → trainable-tensor-count-assert pipeline locally (training itself stubbed out) with no failures. Exact handoff, in priority order (brief §Constraints: submit the target-accuracy runs first — they are the deliverable):
+
+```bash
+# 1. Local Mac terminal -- push code (carries the runner changes + all new .sub files)
+bash cluster/sync_to_cluster.sh
+
+# 2. Cluster terminal -- clear stale bytecode, then submit
+source cluster/cluster.env && ssh "$CLUSTER_USER@$CLUSTER_HOST"
+find ~/thesis/src ~/thesis/cluster -name "__pycache__" -exec rm -rf {} +
+cd ~/thesis
+
+# --- Tier 1 (THE DELIVERABLE): target-accuracy runs -- last2+last3 x rcfwd, 400ep, target 0.99, ~12h each ---
+sbatch cluster/10_rc_frozen_ends/rcfrozen_last3_audit_fmnist_100L_rcfwd.sub
+sbatch cluster/10_rc_frozen_ends/rcfrozen_last3_audit_cifar10_100L_rcfwd.sub
+sbatch cluster/10_rc_frozen_ends/rcfrozen_last2_audit_fmnist_100L_rcfwd.sub
+sbatch cluster/10_rc_frozen_ends/rcfrozen_last2_audit_cifar10_100L_rcfwd.sub
+
+# --- Tier 2: smoke grid, {first2,last2} x {fmnist,cifar10} x {raw,rcfwd} -- 8 jobs, 2h each ---
+for cond in first2 last2; do
+  for ds in fmnist cifar10; do
+    sbatch cluster/10_rc_frozen_ends/rcfrozen_${cond}_smoke_${ds}_100L.sub
+    sbatch cluster/10_rc_frozen_ends/rcfrozen_${cond}_smoke_${ds}_100L_rcfwd.sub
+  done
+done
+
+# --- Tier 2b: rawrescale LR ladder -- control + {1e2,1e4,1e6,1e7} x {first2,last2} x {fmnist,cifar10} -- 20 jobs, 2h each ---
+for cond in first2 last2; do
+  for ds in fmnist cifar10; do
+    sbatch cluster/10_rc_frozen_ends/rcfrozen_${cond}_smoke_${ds}_100L_rawrescale.sub
+    for tag in lr1e2 lr1e4 lr1e6 lr1e7; do
+      sbatch cluster/10_rc_frozen_ends/rcfrozen_${cond}_smoke_${ds}_100L_rawrescale_${tag}.sub
+    done
+  done
+done
+
+# --- Tier 2c: fwdbal, last2 only -- 2 jobs, 2h each (local check says these likely will NOT abort -- see above) ---
+sbatch cluster/10_rc_frozen_ends/rcfrozen_last2_smoke_fmnist_100L_fwdbal.sub
+sbatch cluster/10_rc_frozen_ends/rcfrozen_last2_smoke_cifar10_100L_fwdbal.sub
+
+squeue -u "$CLUSTER_USER" -o "%.18i %.55j %.8T %.10M %R"
+```
+
+Each `sbatch` returns immediately — you do not need to wait for one tier to finish before submitting the next; the tiering controls queue *priority*, not a dependency (submit Tier 1 first only if cluster capacity is limited enough that queue order matters). Total: 4 + 8 + 20 + 2 = **34 new jobs**, matching the 34 new `.sub` files in this directory exactly.
+
+```bash
+# 3. Local Mac terminal -- pull results back once jobs complete
+bash cluster/pull_results.sh 'rcfrozen_last2_*' 10_rc_frozen_ends
+bash cluster/pull_results.sh 'rcfrozen_first2_*' 10_rc_frozen_ends
+bash cluster/pull_results.sh 'rcfrozen_last3_audit_*_rcfwd*' 10_rc_frozen_ends
+```
+
+Then: commit the new JSONs, fill in the "2-layer vs 3-layer" table and the isolation verdict above with real numbers, update this README's Findings-style tables to match the raw/rcfwd-recipe format used for the original 3-layer pass, and close out the brief's Outcome section and the W5 FRONTIER row.
+
 ## Evidence & gaps
 
 - 8/16 smoke jobs run and pulled (both recipes): `rcfrozen_{first3,last3}_smoke_{fmnist,cifar10}_100L[_rcfwd].json` in `reports/results/`, logs in `logs/slurm/10_rc_frozen_ends/`. All 8 completed cleanly (`status=completed`, `stop_reason=max_epochs`, no abort) with the trainable-tensor-count banner assert passing (`trainable tensors=6 (expect 6)`).
-- **Gap (by triage decision, not a blocker):** the 8 audit `.sub` files (200 ep, both recipes) were not submitted. For the `raw` recipe, smoke showed zero epochs of progress in all four cells, so promoting was not evidence-justified per the brief's gating rule. For the `rcfwd` recipe, `first3` is in the same position (chance accuracy, worsening loss — no reason to expect 200 epochs changes that), but **`last3`/rcfwd is a real candidate for the audit**: it shows steady, monotonic 20-epoch improvement (11%→24% fmnist, 11%→22% cifar10) with no sign of plateauing yet. Not promoted automatically here (per the brief's gating rule, that's the oracle's/advisor's call), but flagged as the one cell in this whole campaign where a 200-epoch run could plausibly move the needle. `.sub` files ready: `rcfrozen_last3_audit_{fmnist,cifar10}_100L_rcfwd.sub` — **not yet created**, only the smoke `.sub`s exist for the `rcfwd` recipe; a one-line copy of the raw audit `.sub` template with the `_rcfwd` suffix if the advisor wants to proceed.
-- Cosmetic: the shared `print_diagnostic_summary` (from `cluster/03_he_diagnostics/run_diagnostic.py`) computes a min/max gradient-ratio banner assuming all layers are trainable; with most layers frozen (zero grad by construction) the printed ratio is a meaningless huge number (min=0 in the denominator) in the console log. Does not affect the saved JSON — only the printed console summary. Not fixed here since `run_diagnostic.py` is shared code outside this campaign's scope.
+- **Gap (by triage decision, not a blocker):** the 8 audit `.sub` files (200 ep, both recipes, `first3`/`last3`) were not submitted. For the `raw` recipe, smoke showed zero epochs of progress in all four cells, so promoting was not evidence-justified per the brief's gating rule. For the `rcfwd` recipe, `first3` is in the same position (chance accuracy, worsening loss — no reason to expect 200 epochs changes that), but **`last3`/rcfwd is a real candidate for the audit**: it shows steady, monotonic 20-epoch improvement (11%→24% fmnist, 11%→22% cifar10) with no sign of plateauing yet. `rcfrozen_last3_audit_{fmnist,cifar10}_100L_rcfwd.sub` — flagged here as not-yet-created in the original write-up — **now created as part of W5** (2026-08-15), upgraded to `--epochs 400 --target-train-accuracy 0.99` rather than a plain 200-epoch audit; see the W5 section above and Reproduce for submission status.
+- Cosmetic: the shared `print_diagnostic_summary` (from `cluster/03_he_diagnostics/run_diagnostic.py`) computes a min/max gradient-ratio banner assuming all layers are trainable; with most layers frozen (zero grad by construction) the printed ratio is a meaningless huge number (min=0 in the denominator) in the console log. Does not affect the saved JSON — only the printed console summary. Not fixed here since `run_diagnostic.py` is shared code outside this campaign's scope. Still applies unchanged to the new `first2`/`last2` labels.
 - The original `first3+head` asymmetry (flagged in an earlier draft of the brief) is now resolved by the design correction above — the head is frozen in both conditions, so there is no longer an asymmetry to raise with the advisor. A distinct, still-open low-priority question: a `head`-trainable-in-both variant (`trainable_layers=["fc98","fc99","fc100","head"]` vs `["fc1","fc2","fc3","head"]`) was never run; given `last3`'s corrected result already shows the tail can learn once the forward-scale problem is fixed, and `first3`'s failure is about downstream absorption rather than head scale, this variant would likely track the existing results closely rather than change the picture. Not run here.
+- **W5 gap (blocking, not by choice): none of the 34 new `.sub` files have been submitted.** This agent session has no cluster access (SSH/scp/sbatch all unavailable) — see the W5 section above for exactly what was verified locally instead, and Reproduce → "W5 continuation" for the exact handoff commands. Until those run: no 2-layer smoke/audit JSON exists yet, the rawrescale LR ladder is untested at any rung, `last2`/`first2`'s `fwdbal` behavior is only locally CPU-checked (not the committed cluster result), and no target-accuracy number exists for `last2`/`last3` under rcfwd.
+- `first2`/`fwdbal` (both datasets) was not added to the submission grid — the brief's smoke-grid item 3 scopes `fwdbal` to `last2` only — but local verification found `first2`/fwdbal is the condition that actually reproduces the funnel's predicted explosion (NaN at epoch 1 batch 4 in a small local check), while `last2`/fwdbal does not explode locally. If the advisor wants the predicted-explosion corner measured directly on the cluster, two more `.sub` files (`rcfrozen_first2_smoke_{fmnist,cifar10}_100L_fwdbal.sub`) would need to be created — trivial with the same generator pattern used for the other 34, not done here to stay inside the brief's explicit scope.

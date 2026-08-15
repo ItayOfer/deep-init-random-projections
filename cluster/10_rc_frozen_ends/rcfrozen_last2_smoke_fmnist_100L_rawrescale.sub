@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH --job-name=rcfrozen_last2_smoke_fmnist_100L_rawrescale
+#SBATCH -p dlc
+#SBATCH --gres=gpu:1
+#SBATCH --exclude=dgx04
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --time=02:00:00
+#SBATCH --output=%x-%j.out
+
+set -euo pipefail
+
+CONTAINER_IMAGE="${HOME}/nvidia_pt.sqsh"
+CODE_DIR="${HOME}/thesis"
+
+srun \
+  --container-image="${CONTAINER_IMAGE}" \
+  --container-mounts="${CODE_DIR}:/mount" \
+  --container-workdir=/mount \
+  bash -lc "python -u cluster/10_rc_frozen_ends/run_rc_frozen_ends.py \
+    --experiment rcfrozen_last2_smoke_fmnist_100L_rawrescale \
+    --seed 42 \
+    --device cuda \
+    --lr 1e-2 \
+    --output reports/results/rcfrozen_last2_smoke_fmnist_100L_rawrescale.json"
