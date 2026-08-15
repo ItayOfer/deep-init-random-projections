@@ -221,22 +221,39 @@ def relushift_file(arm, ds, depth):
     return f"relushift_{arm}_smoke_{ds}_{depth}L"
 
 
+def _abort_note(payload, hist, expected_epochs=20):
+    """Return a short marker when a run did not complete, else ''.
+
+    Load-bearing: eight of the ten 100L relushift runs aborted on
+    abort_on_explosion (some after 2 epochs), and their final-epoch values are
+    NOT comparable with a completed run's. Any figure that plots a final value
+    must say so on the face of the chart.
+    """
+    if payload is None or not hist:
+        return ""
+    if payload.get("abort_reason") or len(hist) < expected_epochs:
+        return f"  ABORTED @ep{len(hist)}"
+    return ""
+
+
 def figure2(res_dir, out_dir, dpi, depth=30):
     fname = f"relushift_{depth}L_arms.png"
     requested = [relushift_file(arm, ds, depth) for ds, _ in DATASETS for arm in FIG2_ARMS]
     found, lines = [], []
-    data = {}  # (ds, arm) -> (train_acc, test_acc)
+    data = {}    # (ds, arm) -> (train_acc, test_acc)
+    aborts = {}  # (ds, arm) -> "" or " ABORTED@epN"; see _abort_note
 
     for ds, _ in DATASETS:
         for arm in FIG2_ARMS:
             stem = relushift_file(arm, ds, depth)
-            _, hist = try_load(res_dir, stem)
+            payload, hist = try_load(res_dir, stem)
             if hist is None:
                 continue
             found.append(stem)
+            aborts[(ds, arm)] = _abort_note(payload, hist)
             tr, te = hist[-1]["eval_train_accuracy"], hist[-1]["test_accuracy"]
             data[(ds, arm)] = (tr, te)
-            lines.append(f"{stem}.json: final train_acc={tr:.4f}, test_acc={te:.4f} (n_epochs={len(hist)})")
+            lines.append(f"{stem}.json: final train_acc={tr:.4f}, test_acc={te:.4f} (n_epochs={len(hist)}){aborts[(ds, arm)]}")
 
     arms_present = [a for a in FIG2_ARMS if any((ds, a) in data for ds, _ in DATASETS)]
     if not arms_present:
@@ -257,8 +274,12 @@ def figure2(res_dir, out_dir, dpi, depth=30):
                 continue
             tr, te = pair
             color = ARM_COLOR[arm]
-            hatch = "////" if arm == "c025_diff" else None
+            aborted = bool(aborts.get((ds, arm)))
+            hatch = "xxx" if aborted else ("////" if arm == "c025_diff" else None)
             ew = 2.2 if arm == "he" else 0.6
+            if aborted:
+                ax.text(i, 0.03, aborts[(ds, arm)].strip(), ha="center", fontsize=6.8,
+                        color="#b3261e", fontweight="bold", rotation=90, va="bottom")
             ax.bar(i - w / 2, tr, w, color=color, alpha=1.0, hatch=hatch, edgecolor="black", linewidth=ew)
             ax.bar(i + w / 2, te, w, color=color, alpha=0.55, hatch=hatch, edgecolor="black", linewidth=ew)
             if arm != "he" and he_pair is not None:
@@ -274,12 +295,17 @@ def figure2(res_dir, out_dir, dpi, depth=30):
         ax.set_xticklabels([ARM_LABEL_FIG2[a] for a in arms_present], fontsize=8.5)
         ax.set_ylim(0, 1.05)
         ax.set_ylabel("accuracy (fraction correct)")
-        ax.set_title(f"{ds_title} — {depth}L, 20 epochs", fontsize=10.5)
+        n_ab = sum(1 for a in arms_present if aborts.get((ds, a)))
+        suffix = f" — {n_ab}/{len(arms_present)} ABORTED early" if n_ab else ""
+        ax.set_title(f"{ds_title} — {depth}L, 20 epochs{suffix}",
+                     fontsize=10.5, color=("#b3261e" if n_ab else INK))
         ax.grid(axis="y", alpha=0.25)
 
     axes[0].text(0.015, 0.985, "bar-top numbers = Δ vs he (percentage points)",
                  transform=axes[0].transAxes, va="top", fontsize=7.6, color=GRAY)
 
+    if any(aborts.values()):
+        best = None   # a delta against an aborted run is not a result
     # Headline callout: whichever (dataset, arm) has the single largest test-accuracy
     # delta vs he, found dynamically -- not assumed to be any particular arm, so this
     # stays correct whether it lands on c010 (the 30L headline) or something else once
@@ -507,14 +533,98 @@ def figure4(res_dir, out_dir, dpi):
 # main
 # =============================================================================
 
+
+# =============================================================================
+# Figure 5 -- epoch_choice_artifact.png
+# Why the 30L "win" was not one: it depends entirely on which epoch you read.
+# =============================================================================
+
+FIG5_ARMS = [("c010", "c = 0.10", SHIFT_LIGHT), ("c025", "c = 0.25", SHIFT_MID),
+             ("c070", "c = 0.70", SHIFT_DARK), ("rc", "row_centered_he", VIOLET)]
+
+
+def figure5(res_dir, out_dir, dpi):
+    """Left: He's raw CIFAR-10 test curve at 30L, showing it lands on its worst
+    value at the last epoch. Right: every arm's delta vs He under three
+    estimators. The +6.6 pp headline survives only the final-epoch reading."""
+    fname = "epoch_choice_artifact.png"
+    requested, found, lines = [], [], []
+
+    def series(stem):
+        requested.append(stem)
+        _, h = try_load(res_dir, stem)
+        if not h:
+            return None
+        found.append(stem)
+        return [x["test_accuracy"] for x in h]
+
+    he = series("relushift_he_smoke_cifar10_30L")
+    arms = [(lab, col, series(f"relushift_{a}_smoke_cifar10_30L")) for a, lab, col in FIG5_ARMS]
+    if he is None:
+        report(fname, requested, found, ["SKIPPED -- He baseline missing"])
+        return None
+
+    est = {"final epoch": lambda v: v[-1],
+           "mean, last 5": lambda v: float(np.mean(v[-5:])),
+           "best epoch": lambda v: max(v)}
+
+    fig, (axL, axR) = plt.subplots(1, 2, figsize=(12.4, 4.5),
+                                   gridspec_kw={"width_ratios": [1.15, 1]})
+
+    ep = np.arange(1, len(he) + 1)
+    axL.plot(ep, he, color=BLUE, lw=2, marker="o", ms=3.4, label="he (baseline)")
+    for lab, col, v in arms:
+        if v:
+            axL.plot(ep, v, color=col, lw=1.4, alpha=.85, label=lab)
+    bi = int(np.argmax(he))
+    axL.scatter([bi + 1], [he[bi]], s=90, facecolor="none", edgecolor=INK, zorder=5, lw=1.6)
+    axL.annotate(f"He best  {he[bi]:.4f}\n(epoch {bi+1})", (bi + 1, he[bi]),
+                 textcoords="offset points", xytext=(-4, 16), ha="right", fontsize=8.5, color=INK)
+    axL.scatter([len(he)], [he[-1]], s=90, facecolor="none", edgecolor="#b3261e", zorder=5, lw=1.6)
+    axL.annotate(f"He final  {he[-1]:.4f}\n(read here)", (len(he), he[-1]),
+                 textcoords="offset points", xytext=(-6, -30), ha="right", fontsize=8.5, color="#b3261e")
+    axL.set(xlabel="epoch", ylabel="test accuracy",
+            title="CIFAR-10 test accuracy, 30 layers, end-to-end")
+    axL.grid(alpha=.25, lw=.6)
+    axL.legend(fontsize=8, loc="lower left", framealpha=.9)
+
+    names = list(est)
+    x = np.arange(len(names)); w = 0.2
+    for i, (lab, col, v) in enumerate(arms):
+        if not v:
+            continue
+        d = [(est[n](v) - est[n](he)) * 100 for n in names]
+        axR.bar(x + (i - 1.5) * w, d, w, color=col, edgecolor=INK, lw=.5, label=lab)
+        for xi, di in zip(x + (i - 1.5) * w, d):
+            axR.annotate(f"{di:+.1f}", (xi, di), textcoords="offset points",
+                         xytext=(0, 3 if di >= 0 else -11), ha="center", fontsize=7.4)
+        lines.append(f"{lab}: " + "  ".join(f"{n}={dd:+.1f}pp" for n, dd in zip(names, d)))
+    axR.axhline(0, color=INK, lw=1)
+    axR.set(xticks=x, ylabel="test accuracy vs he (percentage points)",
+            title="The same comparison, three ways of reading it")
+    axR.set_xticklabels(names)
+    axR.grid(axis="y", alpha=.25, lw=.6)
+    axR.legend(fontsize=8, ncol=2, framealpha=.9)
+
+    fig.suptitle("Why the 30-layer result is not a win: the effect exists only at the final epoch",
+                 fontsize=11.5, y=1.0)
+    fig.tight_layout()
+    out = out_dir / fname
+    fig.savefig(out, dpi=dpi, bbox_inches="tight"); plt.close(fig)
+    lines.append(f"He CIFAR-10 30L: best={max(he):.4f} @ep{bi+1}, final={he[-1]:.4f}, drop={max(he)-he[-1]:.4f}")
+    report(fname, requested, found, lines)
+    print(f"  wrote {rel_or_abs(out)} ({out.stat().st_size/1024:.0f} KB)")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--results-dir", type=Path, default=ROOT / "reports" / "results",
                      help="directory containing the source result JSONs")
     ap.add_argument("--output-dir", type=Path, default=ROOT / "reports" / "figures" / "campaign10_followup",
-                     help="directory to write the four PNGs to")
+                     help="directory to write the PNGs to")
     ap.add_argument("--dpi", type=int, default=140, help="figure DPI")
-    ap.add_argument("--only", type=str, default="1,2,3,4",
+    ap.add_argument("--only", type=str, default="1,2,3,4,5",
                      help="comma-separated subset of figure numbers to (re)generate, e.g. '1,3'")
     ap.add_argument("--depth", type=int, default=30, choices=[30, 100],
                      help="depth for figure 2 (campaign 11 end-to-end relushift arms). "
@@ -534,6 +644,8 @@ def main():
         out_paths.append(figure3(args.results_dir, args.output_dir, args.dpi))
     if 4 in wanted:
         out_paths.append(figure4(args.results_dir, args.output_dir, args.dpi))
+    if 5 in wanted:
+        out_paths.append(figure5(args.results_dir, args.output_dir, args.dpi))
     out_paths = [p for p in out_paths if p is not None]
 
     print("\n=== verification ===")

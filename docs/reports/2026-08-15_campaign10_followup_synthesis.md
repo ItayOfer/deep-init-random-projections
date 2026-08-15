@@ -12,12 +12,12 @@ The advisor asked for three things. All three were answered, and two of them ans
 |---|---|---|
 | 1 | Redo the frozen-window experiments at **2 layers**, and train the working cell to ~99% train accuracy | Done. The tail window reaches **0.9498 train** at 400 epochs — but **0.1132 test**. It is memorizing, not learning. |
 | 2 | Do the correction **for the backward only**; check the activations, they will be small | Done, and the activations are `5.01e-9` — provably, since `_GradRescale` is identity in the forward pass. A **9-order-of-magnitude LR sweep** leaves the loss pinned at `ln 10` to within `2.08e-7`. The front window is unreachable, and it is not a step-size problem. |
-| 3 | Take He and **subtract a constant**, to prevent geometric collapse | Done, in the scale-relative form `a ← relu(Wx) − c·rms(a)`. **It does not beat He.** At 30 layers the apparent +6.6 pp win is a final-epoch artifact that vanishes under robust statistics; at **100 layers** — the depth this thesis is about — every arm loses to He by 7–26 points, and on CIFAR-10 all four sit at chance. |
+| 3 | Take He and **subtract a constant**, to prevent geometric collapse | Done, in the scale-relative form `a ← relu(Wx) − c·rms(a)`. **No win at 30 layers** — the apparent +6.6 pp is a final-epoch artifact that vanishes under robust statistics. At **100 layers** the comparison could not be made: 8 of 10 runs, He included, aborted on loss explosion, so the recipe rather than the initializer is what failed. |
 
 Three cross-cutting results emerged that none of the three asks anticipated:
 
 - **Capacity ≠ content.** A 2–3 layer readout on a frozen 100-layer random stack memorizes the training set to 95% and generalizes at chance. The representation stays *injective* — points remain distinguishable — while class geometry is destroyed.
-- **He wins under every protocol at every depth measured.** Frozen-readout ranks He first at 30L and 100L; end-to-end ranks it first at 100L and statistically level at 30L. An earlier reading had the two protocols in conflict and proposed that DC removal trades feature-map quality for optimization conditioning. With the 100L end-to-end arms in hand there is no conflict left to resolve, and no evidence for the conditioning benefit.
+- **No DC-removal variant has been shown to beat He anywhere.** Frozen-readout ranks He first at 30L and 100L; end-to-end is statistically level at 30L and could not be measured at 100L (see §4.3). The earlier proposal that DC removal trades feature-map quality for optimization conditioning has no supporting evidence.
 - **The probe-based screen is vindicated.** Cosine-kNN said content is at chance by depth ~25. Held-out accuracy at depth 100 agrees. An earlier reading of this data — that the probes "understate badly" — was an artifact of reading train accuracy only, and is retracted here.
 - **DC removal is a dead end, by both routes.** Row-centering (weight-space) and the post-ReLU shift (activation-space) are the same intervention, pay the identical constant `r`, and neither beats He. That is a real result, not an absence of one: it closes a direction the thesis has pursued since the beginning.
 
@@ -180,7 +180,7 @@ Under `rcfwd`, where the forward is flat and the signal *does* arrive at O(1), t
 
 **This closes the hypothesis the ask was built on.** The worry was that the rescale might be misdirecting a gradient that, left alone, points somewhere useful. It is not: no scaling of that gradient, over nine orders of magnitude, changes anything.
 
-### 4.3 Ask 3 — He minus a constant: no win, at either depth
+### 4.3 Ask 3 — He minus a constant: no win at 30L, and 100L is still unmeasured
 
 Run in the scale-relative form `a ← relu(Wx) − c·rms(a)`, swept over `c`. **30 layers, end-to-end, 20 epochs** (train / test):
 
@@ -193,6 +193,8 @@ Run in the scale-relative form `a ← relu(Wx) − c·rms(a)`, swept over `c`. *
 | `row_centered_he` | 0.9020 / 0.8394 | 0.5480 / 0.4327 | −1.6 / +4.9 pp |
 | `he` | 0.9107 / 0.8557 | 0.5052 / 0.3835 | baseline |
 
+![Why the 30L result is not a win: the effect exists only at the final epoch](../../reports/figures/campaign10_followup/epoch_choice_artifact.png)
+
 **Read at the final epoch — which is the wrong way to read it.** He's CIFAR-10 test accuracy oscillates between 0.38 and 0.47 across the last eight epochs and lands on its *worst* value at epoch 20 (max 0.4665 at ep15, final 0.3835 — an 8.3-point drop). Recomputed robustly, the effect disappears:
 
 | CIFAR-10 test, vs He | final epoch | mean last 5 | best epoch |
@@ -204,17 +206,28 @@ Run in the scale-relative form `a ← relu(Wx) − c·rms(a)`, swept over `c`. *
 
 There is **no established win at 30 layers**. What survives is "`c = 0.10` is not worse, and may be marginally better, within run-to-run variance."
 
-**And at 100 layers it loses outright** — the thesis's canonical depth, same recipe, all five arms (best-epoch test):
+![Campaign 11 at 100L: 8 of 10 runs aborted on loss explosion](../../reports/figures/campaign10_followup/relushift_100L_arms.png)
 
-| arm | fmnist | vs He | cifar10 | vs He |
-|---|---|---|---|---|
-| **`he`** | **0.2753** | — | **0.3571** | — |
-| `c = 0.10` | 0.2047 | −7.1 pp | 0.1000 | **−25.7 pp** |
-| `c = 0.25` | 0.1755 | −10.0 pp | 0.1326 | −22.4 pp |
-| `row_centered_he` | 0.1233 | −15.2 pp | 0.1026 | −25.4 pp |
-| `c = 0.70` | 0.1001 | −17.5 pp | 0.1104 | −24.7 pp |
+**At 100 layers the comparison could not be made — the recipe is unstable there.** All ten arms were run at the canonical depth, and **8 of the 10 aborted on loss explosion**, He included:
 
-On CIFAR-10 every DC-removal arm is pinned at chance while He trains — a qualitative failure, not a slower rate. **Caveat:** these are 20-epoch smokes and He needs ~152 epochs to reach 0.9953 at 100L NoBN, so all arms are in early transient; but chance-vs-0.357 is not a transient difference. The 18 audits remain ungated.
+| run | epochs | outcome |
+|---|---|---|
+| `he` / fmnist | **1** | loss 36.94, aborted at ep2 |
+| `row_centered_he` / fmnist | 11 | loss 1.5e6, aborted |
+| `c = 0.10` / fmnist | 2 | loss 661, aborted |
+| `c = 0.25` / fmnist | 2 | loss 1.5e8, aborted |
+| `c = 0.70` / fmnist | 20 | completed |
+| `he` / cifar10 | 20 | completed |
+| `row_centered_he` / cifar10 | 20 | completed |
+| `c = 0.10` / cifar10 | 2 | loss 711, aborted |
+| `c = 0.25` / cifar10 | 5 | loss 2.8e8, aborted |
+| `c = 0.70` / cifar10 | 8 | loss 453, aborted |
+
+A first reading of these files compared final-epoch values across them and reported He winning by 7–26 points. **That is retracted**: it set a completed 20-epoch He against arms that died at epochs 2, 5 and 8, and on Fashion-MNIST it quoted He's *epoch-1* value as if it were a result.
+
+What the runs do establish is about the **recipe**, not the initializers: at 100 layers, plain SGD at `lr = 1e-2` is unstable for nearly everything, He included. That is consistent with the project's own history — campaign 05 needed the recovery recipe (plateau scheduler, 152 epochs) to make He train at 100L NoBN, reaching 0.9953 / 0.8633. The minimal recipe that is perfectly adequate at 30 layers does not survive at 100.
+
+**So the question this campaign exists to answer is still open at the depth that matters.** Answering it needs the 100L arms re-run under a recipe that is stable there — campaign 05's, or with warmup — with abort-on-explosion kept on so a failure is visible rather than silently truncating the comparison.
 
 **None of this is a win.** Campaign 09's best prior result was rcfwd reaching the *same* bar six epochs sooner than tuned He; today adds no higher number. What today does add is that the DC-removal route — pursued in this thesis since the beginning, in both its weight-space and activation-space forms — is now closed with evidence at the depth that matters.
 
@@ -231,11 +244,15 @@ And the mechanism behind the original intuition checks out: every `c ≤ 0.75` v
 
 ### 5.1 Capacity is not content
 
+![The 400-epoch frozen-readout audits: train climbs to 0.95 while test stays at chance](../../reports/figures/campaign10_followup/frozen_readout_audits.png)
+
 The 400-epoch audits reach 0.95 train and 0.11 test. A frozen 100-layer random map therefore leaves the data **injective but not class-structured**: a small trained head can still tell 60,000 points apart well enough to memorize labels, while nothing class-aligned survives to be generalized from.
 
 This is why train and test must both be reported. Reading train alone produced two wrong conclusions, both retracted in §6.
 
 ### 5.2 The protocol/depth question, and why it dissolved
+
+![Frozen readout across arms and depths: He leads at both](../../reports/figures/campaign10_followup/frozen_readout_ranking.png)
 
 For most of the day the evidence looked contradictory: 30L end-to-end appeared to favour DC removal, while 100L frozen-readout clearly favoured He. Those two cells differ in *both* depth and protocol, so neither attributed. Two runs settled it — the frozen-readout protocol at 30L, and the end-to-end protocol at 100L:
 
@@ -281,7 +298,21 @@ The last two retractions were both mine, and both came from reading `eval_train_
 
 ---
 
-## 7. Artifacts
+## 7. Figures
+
+All five regenerate from `python3 scripts/campaign10_followup_figures.py` (add `--depth 100` for the 100-layer arm comparison). `reports/figures/` is gitignored, so the PNGs are local; the published artifact embeds them.
+
+| figure | shows |
+|---|---|
+| `frozen_readout_audits.png` | train 0.95 vs test 0.11 on the 400-epoch audits |
+| `epoch_choice_artifact.png` | the 30L "win" existing only at the final epoch |
+| `relushift_100L_arms.png` | 8 of 10 100L runs aborting on loss explosion |
+| `frozen_readout_ranking.png` | He leading the readout ranking at both depths |
+| `front_window_lr_ladder.png` | nine orders of LR, loss identical to 2.08e-7 |
+
+---
+
+## 8. Artifacts
 
 **Code (all on `main`)**
 - `src/rp_study/config.py`, `models/classifiers.py` — `trainable_layers`, `relu_shift`, `relu_shift_detach` (additive; `None` is a bit-exact no-op, verified over 202 parameter tensors and a full epoch)
@@ -298,7 +329,7 @@ The last two retractions were both mine, and both came from reading `eval_train_
 
 ---
 
-## 8. Open questions
+## 9. Open questions
 
 1. **Does the 30L DC-removal win hold at 200 epochs?** These are 20-epoch smokes. The 18 audits are written and ungated. This is the highest-value next run.
 2. **Does it hold at 50L?** The win is at 30L; content dies by 100L. Where does the crossover sit?
