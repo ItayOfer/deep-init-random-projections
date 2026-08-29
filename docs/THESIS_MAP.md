@@ -10,6 +10,19 @@ The thesis is **not** a search for an initializer that beats He — twelve campa
 
 Everything already run is evidence for this. **No further simulation is needed to write it.**
 
+## Why this reframe (the argument, so it survives this session)
+
+The reframe was reached on 2026-08-15, not assumed. The case for it:
+
+1. **Twelve campaigns, no win.** He is 10/12 on the pass criterion. V2 is 5/12 with a depth ceiling at 30L. rcfwd has one PASS. Post-ReLU DC removal has none. The best result the project has ever produced against He is *reaching the same bar six epochs sooner* (campaign 09, fmnist/30L) — never a higher number.
+2. **The one apparent win did not survive scrutiny.** Campaign 11's `c=0.10` looked like +6.6 pp on CIFAR-10 test; that was the final epoch of a curve oscillating 0.38–0.47, and He happened to land on its worst value there. On mean-of-last-5 it is +2.1 pp, on best-epoch +0.2 pp, and three of four arms go negative.
+3. **The failures share one mechanism, and it is provable.** Every candidate works by removing the ReLU DC. That costs exactly `r = √((π−1)/π)` of forward gain per layer, identically in weight space and activation space, because `W(a − c𝟙) = Wa − c(W𝟙)` makes them the same operation. This is not twelve separate disappointments; it is one constant, paid twelve times.
+4. **The cost is transferable but not removable.** Rescaling weights by `1/G(c)` moves the cost from the forward pass to the backward, with `g_fwd/g_bwd` invariant. That invariance is the signature of a lock.
+
+**What would overturn it.** A candidate that beats He on *held-out* accuracy, at matched epochs, under a robust estimator (best-epoch or mean-of-last-5), at a depth where collapse actually bites. Nothing measured so far comes close. If the advisor wants that pursued anyway, the honest next step is the 100L arms under a recipe that does not explode — not another initializer family.
+
+**Status: provisional.** The advisor has not yet agreed to this framing. Everything downstream of it assumes he does.
+
 ## The map
 
 | ch | title | already written | to add | source (already exists) |
