@@ -147,14 +147,30 @@ $\rr^{100}\approx4.78\times10^{-9}$ and $\rr^{-100}\approx2.09\times10^{8}$.
 \section*{5. Post-ReLU DC removal, and the duality}
 
 Modify the forward pass (\emph{not} the weights): $a \leftarrow \relu(z) - c\,\rms(a)$.
-Using $\E[(u-cR)^2]=R^2\big(1-2c/\sqrt\pi+c^2\big)$:
+
+\hd{Derivation of $G(c)$}
+The gain is the rms of the shifted activation relative to the unshifted one,
+$G(c)=\rms(u-cR)/\rms(u)$ with $u=\relu(z)$ and $R=\rms(u)$, so $R^2=\E[u^2]$.
+Expand the square and substitute the half-Gaussian mean $\E[u]=R/\sqrt\pi$ from (2):
+\[
+  \E\big[(u-cR)^2\big]
+  \;=\; \E[u^2] \;-\; 2cR\,\E[u] \;+\; c^2R^2
+  \;=\; R^2 \;-\; 2cR\cdot\frac{R}{\sqrt\pi} \;+\; c^2R^2
+  \;=\; R^2\Big(1-\frac{2c}{\sqrt\pi}+c^2\Big).
+\]
+Divide by $R^2$ and take the square root:
 \begin{empheq}[box=\fbox]{equation}
   G(c)\;=\;\sqrt{\,1-\frac{2c}{\sqrt\pi}+c^{2}\,},
   \qquad
   \boxed{\;G\!\left(\tfrac{1}{\sqrt\pi}\right)=\sqrt{1-\tfrac1\pi}=\sqrt{\tfrac{\pi-1}{\pi}}=\rr\;}
 \end{empheq}
-$G$ is minimised exactly at $c=1/\sqrt\pi$, the constant that removes exactly $\E[u]$; and
-$G(c)<1$ for all $c\in\big(0,\,2/\sqrt\pi\big)$, $2/\sqrt\pi\approx1.1284$.
+Minimising: $\frac{d}{dc}\big(c^2-2c/\sqrt\pi\big)=2c-2/\sqrt\pi=0$ gives $c=1/\sqrt\pi$ ---
+and $cR=R/\sqrt\pi=\E[u]$ there, so the minimising shift removes \emph{exactly the mean}. At the minimum
+\[
+  G^2\big(\tfrac{1}{\sqrt\pi}\big)\;=\;1-\tfrac1\pi\;=\;\frac{\E[u^2]-\E[u]^2}{\E[u^2]}\;=\;\frac{\Var(u)}{\E[u^2]},
+\]
+which is the centering ratio (3) --- the same quantity row centering pays, hence $G(1/\sqrt\pi)=\rr$
+with no coincidence involved. Also $G(c)<1$ for all $c\in\big(0,\,2/\sqrt\pi\big)$, $2/\sqrt\pi\approx1.1284$.
 
 \hd{Duality (why this is not a new family)}
 \[
