@@ -59,6 +59,7 @@ matplotlib.use("Agg")
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import MaxNLocator
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))  # convention parity with the other scripts/*.py; unused directly here
@@ -184,6 +185,7 @@ def figure1(res_dir, out_dir, dpi):
         ax.text(8, CHANCE + 0.02, "chance", fontsize=8.5, color=GRAY)
         ax.set_title(f"{ds_title} — 100L, 400 epochs", fontsize=10.5)
         ax.set_xlabel("epoch")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         ax.set_ylim(0, 1.02)
         ax.grid(alpha=0.25)
         if plotted:
@@ -191,8 +193,7 @@ def figure1(res_dir, out_dir, dpi):
     axes[0].set_ylabel("accuracy (fraction of examples correct)")
 
     fig.suptitle(
-        "Frozen-readout audits — rcfwd recipe (row_centered_forward_balanced + grad_rescale), "
-        "SGD lr=1e-2 fixed, NoBN",
+        "Frozen-readout audits — rcfwd recipe, SGD lr=1e-2, NoBN",
         fontsize=11.5,
     )
     fig.tight_layout(rect=(0, 0, 1, 1))
@@ -268,6 +269,12 @@ def figure2(res_dir, out_dir, dpi, depth=30):
 
     for ax, (ds, ds_title) in zip(axes, DATASETS):
         he_pair = data.get((ds, "he"))
+        # Retraction protection (2026-08-15): if ANY run in this panel aborted,
+        # cross-arm deltas are meaningless -- in particular, he itself aborting
+        # at epoch 1 would turn every "delta vs he" into a comparison against
+        # He's epoch-1 value, which is exactly the retracted reading. On such
+        # panels the bar-top numbers show the raw final accuracies instead.
+        panel_aborted = any(aborts.get((ds, a)) for a in arms_present)
         for i, arm in enumerate(arms_present):
             pair = data.get((ds, arm))
             if pair is None:
@@ -282,7 +289,10 @@ def figure2(res_dir, out_dir, dpi, depth=30):
                         color="#b3261e", fontweight="bold", rotation=90, va="bottom")
             ax.bar(i - w / 2, tr, w, color=color, alpha=1.0, hatch=hatch, edgecolor="black", linewidth=ew)
             ax.bar(i + w / 2, te, w, color=color, alpha=0.55, hatch=hatch, edgecolor="black", linewidth=ew)
-            if arm != "he" and he_pair is not None:
+            if panel_aborted:
+                ax.text(i - w / 2, tr + 0.015, f"{tr:.2f}", ha="center", fontsize=7, color=INK)
+                ax.text(i + w / 2, te + 0.015, f"{te:.2f}", ha="center", fontsize=7, color=INK)
+            elif arm != "he" and he_pair is not None:
                 d_tr, d_te = (tr - he_pair[0]) * 100, (te - he_pair[1]) * 100
                 ax.text(i - w / 2, tr + 0.015, f"{d_tr:+.1f}", ha="center", fontsize=7, color=INK)
                 ax.text(i + w / 2, te + 0.015, f"{d_te:+.1f}", ha="center", fontsize=7, color=INK)
@@ -296,13 +306,16 @@ def figure2(res_dir, out_dir, dpi, depth=30):
         ax.set_ylim(0, 1.05)
         ax.set_ylabel("accuracy (fraction correct)")
         n_ab = sum(1 for a in arms_present if aborts.get((ds, a)))
-        suffix = f" — {n_ab}/{len(arms_present)} ABORTED early" if n_ab else ""
-        ax.set_title(f"{ds_title} — {depth}L, 20 epochs{suffix}",
+        # The abort count MUST stay in the title (retraction protection): 8 of
+        # the ten 100L runs aborted, and a title without the count would let
+        # this figure silently regenerate a retracted claim.
+        suffix = f" — {n_ab}/{len(arms_present)} ABORTED" if n_ab else ""
+        ax.set_title(f"{ds_title} — {depth}L, 20 ep{suffix}",
                      fontsize=10.5, color=("#b3261e" if n_ab else INK))
         ax.grid(axis="y", alpha=0.25)
-
-    axes[0].text(0.015, 0.985, "bar-top numbers = Δ vs he (percentage points)",
-                 transform=axes[0].transAxes, va="top", fontsize=7.6, color=GRAY)
+        helper = ("bar-top numbers = final accuracy (no Δ vs he: aborted runs not comparable)"
+                  if panel_aborted else "bar-top numbers = Δ vs he (percentage points)")
+        ax.text(0.015, 0.985, helper, transform=ax.transAxes, va="top", fontsize=7.6, color=GRAY)
 
     if any(aborts.values()):
         best = None   # a delta against an aborted run is not a result
@@ -333,8 +346,7 @@ def figure2(res_dir, out_dir, dpi, depth=30):
                bbox_to_anchor=(0.5, -0.02), frameon=False)
 
     fig.suptitle(
-        f"Campaign 11 — {depth}-layer FC, NoBN, SGD lr=1e-2, 20-epoch end-to-end training: "
-        "final accuracy by initialization arm",
+        f"Campaign 11 — relu-shift arms, {depth}L end-to-end: final accuracy",
         fontsize=11.3,
     )
     fig.tight_layout(rect=(0, 0.08, 1, 1))
@@ -428,8 +440,7 @@ def figure3(res_dir, out_dir, dpi):
                fontsize=9, bbox_to_anchor=(0.5, -0.01), title="depth", frameon=False)
 
     fig.suptitle(
-        "Campaign 12 — frozen-readout ranking: fc99–fc100 trainable, head frozen, "
-        "NoBN, SGD lr=1e-2, 20-epoch smokes, 30L vs 100L",
+        "Campaign 12 — frozen-readout ranking, 30L vs 100L",
         fontsize=11.3,
     )
     fig.tight_layout(rect=(0, 0.045, 1, 1))
@@ -499,8 +510,9 @@ def figure4(res_dir, out_dir, dpi):
             ax.plot(ep, plotted, "-", color=color, lw=1.3, marker=marker, ms=5.5,
                      markevery=2, label=f"lr={lr_val:g}")
         ax.axhline(LN10, color="black", ls="--", lw=1.2, zorder=0)
-        ax.set_title(f"{ds_title} — 100L, first2 window, rawrescale recipe", fontsize=10)
+        ax.set_title(f"{ds_title} — 100L, first2 window", fontsize=10)
         ax.set_xlabel("epoch")
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         ax.set_ylim(LN10 - 0.0006, LN10 + 4 * OFFSET_STEP + 0.0008)
         ax.grid(alpha=0.25)
 
@@ -514,10 +526,7 @@ def figure4(res_dir, out_dir, dpi):
 
     max_dev_str = f"{max(all_dev):.2e}" if all_dev else "n/a"
     fig.suptitle(
-        "Campaign 10 W5 — front-window LR ladder: 100L FC, rawrescale recipe "
-        "(row_centered_he + grad_rescale), NoBN, 20-epoch smokes, LR swept 1e-2–1e7\n"
-        f"max |eval_train_loss − ln 10| = {max_dev_str} across all rungs × epochs × datasets "
-        "(curves offset by 0.0005/rung for visibility only)",
+        f"Campaign 10 W5 — front-window LR ladder: max |loss − ln 10| = {max_dev_str}",
         fontsize=10.8,
     )
     fig.tight_layout(rect=(0, 0.09, 1, 1))
@@ -584,7 +593,8 @@ def figure5(res_dir, out_dir, dpi):
     axL.annotate(f"He final  {he[-1]:.4f}\n(read here)", (len(he), he[-1]),
                  textcoords="offset points", xytext=(-6, -30), ha="right", fontsize=8.5, color="#b3261e")
     axL.set(xlabel="epoch", ylabel="test accuracy",
-            title="CIFAR-10 test accuracy, 30 layers, end-to-end")
+            title="CIFAR-10 — 30L, end-to-end test accuracy")
+    axL.xaxis.set_major_locator(MaxNLocator(integer=True))
     axL.grid(alpha=.25, lw=.6)
     axL.legend(fontsize=8, loc="lower left", framealpha=.9)
 
@@ -601,12 +611,12 @@ def figure5(res_dir, out_dir, dpi):
         lines.append(f"{lab}: " + "  ".join(f"{n}={dd:+.1f}pp" for n, dd in zip(names, d)))
     axR.axhline(0, color=INK, lw=1)
     axR.set(xticks=x, ylabel="test accuracy vs he (percentage points)",
-            title="The same comparison, three ways of reading it")
+            title="Same comparison, three estimators")
     axR.set_xticklabels(names)
     axR.grid(axis="y", alpha=.25, lw=.6)
     axR.legend(fontsize=8, ncol=2, framealpha=.9)
 
-    fig.suptitle("Why the 30-layer result is not a win: the effect exists only at the final epoch",
+    fig.suptitle("The 30-layer 'win' is a final-epoch reading artifact",
                  fontsize=11.5, y=1.0)
     fig.tight_layout()
     out = out_dir / fname

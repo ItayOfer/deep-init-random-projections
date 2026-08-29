@@ -41,6 +41,12 @@ Figures land in `reports/figures/gain_funnels/` and `reports/figures/rcfwd_resca
 | `relu_shift_duality_check.py` | Numerically verifies the row-centering ↔ post-ReLU-shift duality: on `row_centered_he` (`W𝟙 = 0`) the shift is an exact **forward** no-op (relative loss diff 0.0), on `he` it is O(1), and weight gradients differ under both — the identity is forward-only → `relu_shift_duality_check.json` |
 | `relu_shift_local_pretriage.py` | GO/NO-GO before the cluster grid: the exact campaign-11 recipe run for a couple of real epochs per arm on CPU, to catch dead or diverging arms before 18 SLURM jobs queue behind them → `relushift_local_pretriage_<depth>L_<dataset>.json` |
 
+## Dying-neurons proof
+
+| Script | Shows |
+|---|---|
+| `dying_neurons_depth_figure.py` | Measured dataset-dead fraction vs depth (He, from the depth-tagged `relu_shift_geometry_screen_*L_*.json` screens) against the theorem's universal Slepian lower bound (arc-cosine map iterated from ρ=0 for L−1 steps, dataset-free), the per-dataset mean-anchored heuristic curves (dashed), and the 1/2 asymptote → `reports/figures/dying_neurons/dead_fraction_vs_depth.png` |
+
 ## Depth / gradient diagnostics
 
 | Script | Shows |
