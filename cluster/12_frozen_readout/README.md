@@ -2,9 +2,11 @@
 
 **Question.** Freeze a 100-layer network at initialization, train **only `fc99` and `fc100`** (head frozen too), and vary nothing but the initialization. Final `eval_train_accuracy` then measures one thing: *how much usable class structure a random deep map leaves at its output.* Which initializer leaves the most?
 
-**Why this campaign exists.** Campaign 09 concluded that row-centered representation **content** dies with depth, on the evidence of cosine-kNN and linear probes hitting chance by layer ≈25. Campaign 10 then trained only `fc98`–`fc100` on top of a frozen 100-layer row-centered stack and reached **0.8335** (fmnist) / **0.8170** (cifar10) at epoch ~243, still climbing — on a representation those probes called dead.
+> **Retraction note (2026-08-15, evening — after this campaign ran).** The motivation below is preserved as it was believed at design time, and two of its claims were later **retracted**: the 0.83 that suggested "the probes understate badly" is **train** accuracy — the 400-epoch audits reach 0.9498 train / **0.1132 test**, so the probes were right about content and the 0.83 was memorization (capacity ≠ content); and "training 3 layers beats training all 100 by ~4.8×" is true on train and **reversed on test** (0.1132 vs 0.1672). The campaign's own results below are unaffected. See [`docs/reports/2026-08-15_campaign10_followup_synthesis.md`](../../docs/reports/2026-08-15_campaign10_followup_synthesis.md) §5–6.
 
-The probes understate badly. Information can be present without being linearly or metrically decodable, and the gap here is chance→83%, not a rounding error. **A trained readout is the honest instrument**, and this campaign uses it as one.
+**Why this campaign exists** *(as believed at design time — see retraction note above)*. Campaign 09 concluded that row-centered representation **content** dies with depth, on the evidence of cosine-kNN and linear probes hitting chance by layer ≈25. Campaign 10 then trained only `fc98`–`fc100` on top of a frozen 100-layer row-centered stack and reached **0.8335** (fmnist) / **0.8170** (cifar10) at epoch ~243, still climbing — on a representation those probes called dead.
+
+The probes understate badly *(retracted — the 0.83 is train accuracy; see note above)*. Information can be present without being linearly or metrically decodable, and the gap here is chance→83%, not a rounding error. **A trained readout is the honest instrument**, and this campaign uses it as one — provided it is read on **held-out** data.
 
 The same comparison also shows end-to-end training is the *worse* protocol at this depth — same init, same rescale, same data, same optimizer:
 

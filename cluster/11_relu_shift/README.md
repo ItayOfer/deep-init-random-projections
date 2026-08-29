@@ -8,13 +8,15 @@ a = relu(Wx) − c · rms(relu(Wx))
 
 and ask whether the three requirements — (i) no geometric collapse, (ii) stable gradients, (iii) preserved class content — are met better than by either `he` or `row_centered_he`. Brief: [`docs/plans_handoffs/briefs/2026-08-15_campaign11-relu-shift-dc-removal.md`](../../docs/plans_handoffs/briefs/2026-08-15_campaign11-relu-shift-dc-removal.md).
 
-**Headline.** Two closed-form results at initialization, and — after the training runs landed on 2026-08-15 — a **positive** empirical result that overturns this campaign's original negative verdict.
+> **Retraction note (2026-08-15, evening).** An earlier revision of this README claimed a training win over He at 30L ("+13.2 pp on cifar10; every shift arm beats He; the first accuracy win in the project"). Those numbers are `eval_train_accuracy` at the **final epoch** only. On **held-out test** with robust estimators the win vanishes: `c = 0.10` is +6.6 pp at the final epoch but **+2.1 pp** on mean-of-last-5 and **+0.2 pp** at best-epoch, and the other arms go negative — He's test curve oscillates 0.38–0.47 and its final epoch lands on the minimum. Corrected analysis: [`docs/reports/2026-08-15_campaign10_followup_synthesis.md`](../../docs/reports/2026-08-15_campaign10_followup_synthesis.md) §4.3. The passages below have been corrected; §8's table is genuine data but reports final-epoch train accuracy — read it alongside the synthesis's robust tables.
+
+**Headline.** Two closed-form results at initialization, and — after the training runs landed on 2026-08-15 and the retraction above — an empirical picture that is **level with He at 30L: not worse, not established better**.
 
 1. **Exact DC removal costs exactly `r = √((π−1)/π) ≈ 0.8256` of forward gain per layer — the *same* constant row-centering pays.** This is not an analogy; it is the duality expressed as a number, and it is a theorem (§The closed form). The brief's hope that the shift "decays the forward pass far less than row-centering" is **false**: the 60L measurement that suggested it (0.908 vs 0.828) was reading the gain in a regime where the shift had already stopped removing the DC.
 2. `G(c) < 1` for every `c ∈ (0, 2/√π)`, so DC removal always costs forward gain. **Oracle correction (2026-08-15):** an earlier draft of this section concluded from that "the three requirements are not jointly satisfiable by DC removal — the only shift with unit forward gain is no shift at all." That overreaches. Boosting the He weights by `1/G(c)` — the exact analogue of what `row_centered_forward_balanced` does for row-centering — restores `g_fwd ≈ 1` and drives `g_bwd` to `1.2114 ≈ 1/r`, with the ratio `g_fwd/g_bwd` invariant under the boost (0.8862 unboosted vs 0.8861 boosted at `c = 1/√π`) — the signature of a **lock**, not an impossibility. The cost is transferable, and the correct, stronger claim is a **unification**: the gain-coupling lock is a property of DC removal *itself*, not of row-centering, and both routes — weight-space and activation-space — pay the identical constant `r`.
-3. **At 30 layers, DC removal beats He in real training** (§8, added 2026-08-15). `c = 0.10` reaches 0.9246 / 0.6374 against He's 0.9107 / 0.5052 — **+13.2 pp on cifar10**. Every shift arm beats He on both datasets. This is the first accuracy win over He by a new initializer in this project; campaign 09's best was reaching the *same* bar six epochs sooner.
+3. **At 30 layers, DC removal is level with He in real training — not worse, not established better** (§8, corrected 2026-08-15). The apparent final-epoch gap does not survive held-out, robust reading: `c = 0.10` is **+0.2 pp** test at best-epoch, the other arms negative (retraction note above; synthesis §4.3). The project's best result against He remains campaign 09's *same bar, six epochs sooner*.
 
-This campaign was originally written up as a negative result. **It is not one at 30L.** What remains genuinely negative is the 100-layer picture (§5) and the frozen-readout ranking at 100L, where every shift arm loses to He — see [campaign 12](../12_frozen_readout/README.md).
+This campaign was originally written up as a negative result, briefly relabeled a positive one, and settled — after the retraction — as: **no established win anywhere, no loss at 30L.** The 100-layer end-to-end comparison is unmeasured (8 of 10 arms aborted under the plain recipe — synthesis §4.3), and the frozen-readout ranking has He first at both depths — see [campaign 12](../12_frozen_readout/README.md).
 
 **Builds on.** Campaign [09](../09_rcfwd_rescale/README.md) (three-requirements frame, conditioning-vs-content 2×2), campaign [10](../10_rc_frozen_ends/README.md) (100L row-centered nets are not trainable through frozen windows; forward-scale death at `~1e-8` is a real failure mode, so a candidate whose 100L forward RMS is `6e-8` is a predicted failure, not a surprise), and W2's dying-neurons proof (`P[dead] → ½`), which this campaign independently confirms empirically.
 
@@ -206,9 +208,9 @@ So the fork is **not** numerically negligible — it moves the per-layer weight 
 | `c=0.25` differentiable | 0.683 → 0.826 | 0.174 → 0.250 | 9.4e-1 – 4.3e+0 |
 | `c=0.70` | 0.118 → **0.139** | 0.102 → **0.103** | 2.4e-2 – 2.9e+0 |
 
-Three things worth carrying into the smoke triage. **(a)** The small-`c` arms train comparably to He and far better than `row_centered_he`, which is flat at chance on cifar10 — so DC removal on He weights is *not* inheriting row-centering's trainability failure at 30L. **(b)** At epoch 1 on cifar10, `c = 0.10` (0.273) is ahead of `he` (0.243). **(c)** `c = 0.70` — the best-geometry arm — looks **stuck at chance on both datasets** at 2 epochs, with its minimum layer gradient two orders of magnitude below the others. This was written up as "the clearest single piece of evidence for the campaign's negative conclusion." **That reading was wrong, and the 20-epoch smoke refutes it** (§8): `c = 0.70` reaches 0.9291 / 0.5394, *beating* He on both datasets. It is a slow starter (0.1254 at epoch 1 on fmnist), not a dead arm, and 2 CPU epochs cannot tell those apart — which is exactly the limitation this section states about itself. The lesson generalises: a 2-epoch pre-triage is a GO/NO-GO on *crashes*, not evidence about *learning*.
+Three things worth carrying into the smoke triage. **(a)** The small-`c` arms train comparably to He and far better than `row_centered_he`, which is flat at chance on cifar10 — so DC removal on He weights is *not* inheriting row-centering's trainability failure at 30L. **(b)** At epoch 1 on cifar10, `c = 0.10` (0.273) is ahead of `he` (0.243). **(c)** `c = 0.70` — the best-geometry arm — looks **stuck at chance on both datasets** at 2 epochs, with its minimum layer gradient two orders of magnitude below the others. This was written up as "the clearest single piece of evidence for the campaign's negative conclusion." **That reading was wrong, and the 20-epoch smoke refutes it** (§8): `c = 0.70` reaches 0.9291 / 0.5394 final-epoch train — comparable to He, not dead. It is a slow starter (0.1254 at epoch 1 on fmnist), not a dead arm, and 2 CPU epochs cannot tell those apart — which is exactly the limitation this section states about itself. The lesson generalises: a 2-epoch pre-triage is a GO/NO-GO on *crashes*, not evidence about *learning*.
 
-### 8. Training results (2026-08-15) — the negative verdict does not survive at 30L
+### 8. Training results (2026-08-15, corrected) — level with He at 30L under robust statistics
 
 The 12 30-layer smokes ran on the cluster (20 epochs, NoBN, width 500, SGD lr 1e-2, bs 256, seed 42, no clipping).
 `eval_train_accuracy`, epoch 1 → epoch 20, from `reports/results/relushift_*_smoke_*_30L*.json`:
@@ -222,9 +224,12 @@ The 12 30-layer smokes ran on the cluster (20 epochs, NoBN, width 500, SGD lr 1e
 | `row_centered_he` | 0.1364 → 0.9020 | 0.1145 → 0.5480 | 0.7250 | −0.9 / +4.3 pp |
 | `he` | 0.7313 → 0.9107 | 0.2726 → 0.5052 | 0.7080 | baseline |
 
-**Every shift arm beats He on both datasets**, and `c = 0.10` does so by 13.2 points on cifar10. This is the first
-accuracy win over He by a new initializer anywhere in this project — campaign 09's best result was rcfwd reaching the
-*same* pass bar six epochs sooner (ep74 vs ep80), not a higher number.
+**Correction (retraction note at top).** The table is final-epoch **train** accuracy, and an earlier revision read it as
+"every shift arm beats He — the first accuracy win in the project." Retracted: on held-out test with robust estimators
+the gap collapses (`c = 0.10`: +6.6 pp final-epoch → +2.1 mean-of-last-5 → **+0.2 best-epoch**; the other arms go
+negative), because He's test curve oscillates 0.38–0.47 and lands on its worst value at epoch 20 (synthesis §4.3).
+What survives: `c = 0.10` is *not worse* than He at 30L, and the within-family ordering below is real. The project's
+best result against He remains campaign 09's rcfwd reaching the *same* pass bar six epochs sooner (ep74 vs ep80).
 
 Three things the table settles:
 

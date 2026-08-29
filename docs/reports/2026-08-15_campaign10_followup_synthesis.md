@@ -286,7 +286,7 @@ This matters for W3 (the parked α-family screen), which gates cluster time on p
 | belief | status | evidence |
 |---|---|---|
 | Campaign 09: "content is the bottleneck at ≥50L" | **vindicated** | frozen-readout test at 100L is chance for every arm (He *does* train end-to-end at 100L NoBN: 0.9953/0.8633) |
-| Campaign 11: "the family is a negative result" | **overturned at 30L** | every shift arm beats He on CIFAR-10 test by 3.5–6.7 pp |
+| Campaign 11: "the family is a negative result" | **overturned as stated, then re-narrowed (§4.3)** | the final-epoch reading (+3.5–6.7 pp CIFAR-10 test) is an epoch-choice artifact; robustly, `c=0.10` is +0.2 pp at best-epoch and the rest go negative — no arm worse than He at 30L, none established better |
 | Campaign 11: "`c = 0.70` is stuck at chance — clearest evidence for the negative conclusion" | **retracted** | 2-epoch CPU pre-triage; at 20 epochs it reaches 0.9291 / 0.8535 |
 | Campaign 11: "requirements (i) and (ii) are provably incompatible" | **corrected** | the cost is transferable; it is the gain-coupling lock again (§3.1) |
 | "The probes understate badly — a trained readout gets 0.83 where they said chance" | **retracted** | that 0.83 is train; test is 0.1132 |

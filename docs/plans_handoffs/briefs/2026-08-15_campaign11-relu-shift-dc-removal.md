@@ -1,5 +1,7 @@
 # Brief — campaign 11: post-ReLU DC removal (2026-08-15)
 
+> **Superseded note (2026-08-15, evening):** prior-art item 5's observation that "the shift decays the forward pass far less than row-centering" (0.908 ≈ √r vs 0.828) was later proven **false** — the exact per-layer cost is `G(1/√π) = r ≈ 0.8256`, identical to row-centering; the 0.908 was a depth-drifting geometric mean (campaign 11 README §The closed form). This brief is otherwise a historical record and is left as written.
+
 **Onboarding chain (read in order before starting):** `README.md` → `docs/RESEARCH_LOG.md` → `docs/plans_handoffs/FRONTIER.md` → this brief → `CLAUDE.md` (conventions). Task-specific deep dives: `cluster/09_rcfwd_rescale/README.md` (the three-requirements frame and the conditioning-vs-content 2×2), `INITIALIZERS.md` (the row-centered family), `docs/reports/gradient_diagnostics_analysis.md` §4 (half-Gaussian moments and the centering ratio).
 
 ## Goal
