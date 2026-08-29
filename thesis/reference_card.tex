@@ -1,0 +1,344 @@
+% Mathematical reference card -- every identity the thesis uses, in one place.
+% Build:  cd thesis && latexmk -pdf reference_card.tex
+% Numbers machine-checked 2026-08-15; see the provenance table at the end.
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=13mm,top=13mm,bottom=15mm]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,mathtools,empheq,booktabs,array,enumitem}
+\usepackage[usenames,dvipsnames]{xcolor}
+\usepackage[colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue]{hyperref}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\Cov}{\operatorname{Cov}}
+\newcommand{\relu}{\operatorname{ReLU}}
+\newcommand{\rms}{\operatorname{rms}}
+\newcommand{\gfwd}{g_{\mathrm{fwd}}}
+\newcommand{\gbwd}{g_{\mathrm{bwd}}}
+\newcommand{\rr}{r}
+\newcommand{\hd}[1]{\vspace{1.5mm}\noindent\textbf{\color{NavyBlue}#1}\vspace{0.6mm}\\}
+\setlist[itemize]{leftmargin=4.2mm,itemsep=0.4mm,topsep=0.7mm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1.1mm}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries Mathematical reference card}\\[1mm]
+{\small Every identity, constant and initializer definition the thesis depends on.\\
+Constants machine-checked 2026-08-15. Provenance table on the last page.}
+\end{center}
+
+\hrule\vspace{2mm}
+
+%==============================================================
+\section*{1. Setup and notation}
+
+A depth-$L$ fully connected ReLU network of width $d$, no BatchNorm, zero biases at initialization:
+\[
+  z^{(\ell)} = W^{(\ell)} a^{(\ell-1)},\qquad
+  a^{(\ell)} = \relu\!\big(z^{(\ell)}\big),\qquad a^{(0)}=x .
+\]
+\texttt{nn.Linear} stores $W$ as \texttt{(fan\_out, fan\_in)}, so \emph{row} $i$ of $W$ is the weight vector of output neuron $i$, and \emph{row centering} means $\sum_j W_{ij}=0$.
+
+Write $u=\relu(z)$ with $z\sim\mathcal N(0,\sigma^2)$, and $R^2=\E[u^2]$.
+Backprop error signal $\delta^{(\ell)} = \partial \mathcal L/\partial z^{(\ell)}$, with
+$\partial\mathcal L/\partial W^{(\ell)} = \delta^{(\ell)} (a^{(\ell-1)})^{\!\top}$ --- so a
+\textbf{parameter} gradient is the product of a forward and a backward quantity. This is why the two
+directions cannot be tuned independently.
+
+Per-layer gains:
+\[
+  \gfwd=\frac{\rms\!\big(a^{(\ell)}\big)}{\rms\!\big(a^{(\ell-1)}\big)},\qquad
+  \gbwd=\frac{\rms\!\big(\delta^{(\ell)}\big)}{\rms\!\big(\delta^{(\ell+1)}\big)} .
+\]
+
+%==============================================================
+\section*{2. Half-Gaussian moments --- the atoms}
+
+Everything below is built from three facts about $u=\relu(z)$, $z\sim\mathcal N(0,\sigma^2)$:
+\begin{align}
+  \E[u] &= \frac{\sigma}{\sqrt{2\pi}}, &
+  \E[u^2] &= \tfrac12\sigma^2, &
+  \Var(u) &= \sigma^2\Big(\tfrac12-\tfrac1{2\pi}\Big) .
+\end{align}
+Two ratios follow, and they are the whole story:
+\begin{empheq}[box=\fbox]{align}
+  \frac{\E[u]}{\rms(u)} &= \frac{1}{\sqrt\pi} \approx 0.5642
+  &&\text{(the DC component, relative to scale)}\\[1mm]
+  \frac{\Var(u)}{\E[u^2]} &= \frac{\pi-1}{\pi} \approx 0.6817
+  &&\text{(the \emph{centering ratio})}
+\end{empheq}
+
+\textbf{Why the centering ratio matters.} A row-centered $W$ annihilates the constant component of its
+input: if $\sum_j W_{ij}=0$ then $W\mathbf 1 = 0$, so
+$z_i=\sum_j W_{ij}\big(a_j-\bar a\big)$. The layer therefore sees $\Var(a)$, not $\E[a^2]$ ---
+it is \emph{blind to the DC}. An uncentered (He) layer sees $\E[a^2]$. The ratio between what the two
+see is exactly $(\pi-1)/\pi$.
+
+%==============================================================
+\section*{3. The arc-cosine kernel and geometric collapse}
+
+For $z_k,z_m$ jointly Gaussian with correlation $\rho$ and equal variance, write
+$\alpha=\arccos\rho$. Then
+\begin{empheq}[box=\fbox]{equation}
+  \chi(\rho)\;=\;\frac{\E[\relu(z_k)\relu(z_m)]}{\E[\relu(z)^2]}
+  \;=\;\frac{\sin\alpha+(\pi-\alpha)\cos\alpha}{\pi}
+\end{empheq}
+with $\chi(1)=1$, $\chi(0)=1/\pi\approx0.3183$, $\chi(-1)=0$. Per-sample norms cancel, so
+$\chi$ depends only on the angle.
+
+\hd{Two fixed points --- the two collapse modes}
+\begin{itemize}
+  \item \textbf{He (uncentered).} $\chi(\rho)>\rho$ on $[0,1)$, so $\rho_\ell\uparrow 1$:
+        every pair of inputs becomes parallel. Measured: mean pairwise cosine $0.993$ at $L=60$.
+  \item \textbf{Row-centered.} The DC is removed each layer, and the iteration lands on a
+        \emph{non-degenerate} fixed point $\rho^\ast\approx0.32$, i.e.\ $\approx 71^\circ$ ---
+        stable from $L=20$ to $L=60$. Collapse is avoided; \S5 gives the price.
+\end{itemize}
+
+\hd{Local expansion at $\rho=1$ (the rate)}
+Since $\chi'(1)=1$, the map is tangent to the identity and convergence is \emph{algebraic}.
+With $u=1-\rho$:
+\begin{empheq}[box=\fbox]{equation}
+  1-\chi(\rho)\;=\;u-\frac{2\sqrt2}{3\pi}\,u^{3/2}+O(u^2),
+  \qquad c_\chi:=\frac{2\sqrt2}{3\pi}\approx0.30011
+\end{empheq}
+Solving $u_\ell=u_{\ell-1}-c_\chi u_{\ell-1}^{3/2}$:
+\begin{empheq}[box=\fbox]{equation}
+  \varepsilon_\ell \;=\; 1-\rho_\ell \;\approx\; \frac{4}{c_\chi^{2}}\,\ell^{-2}
+  \;=\; \frac{9\pi^2}{2}\,\ell^{-2}\;\approx\;\frac{44.413}{\ell^{2}},
+  \qquad
+  \Delta_\ell=\frac{\arccos(1-\varepsilon_\ell)}{\pi}\approx\frac{3}{\ell}
+\end{empheq}
+$4/c_\chi^2=9\pi^2/2$ is an \emph{exact} identity. The leading constant is independent of $\rho_0$.
+
+%==============================================================
+\section*{4. The gain-coupling lock}
+
+\begin{empheq}[box=\fbox]{equation}
+  \frac{\gfwd}{\gbwd} \;=\; \rr \;=\; \sqrt{\frac{\pi-1}{\pi}} \;\approx\; 0.82565
+  \qquad\text{(independent of the weight variance)}
+\end{empheq}
+
+The forward pass of a row-centered layer sees $\Var(a)$; the backward pass sees $\E[a^2]$
+(the error signal carries no DC constraint). Their ratio is the centering ratio, and its square
+root is the ratio of \emph{gains}. Scaling the variance moves both gains together and cannot change
+their ratio --- hence a \emph{lock}, not a tunable trade-off.
+
+\begin{center}\small
+\begin{tabular}{@{}llccl@{}}
+\toprule
+choice & $\Var(W)\cdot d$ & $\gfwd$ & $\gbwd$ & realized by \\
+\midrule
+backward-balanced & $2$ & $0.826$ & $1.000$ & \texttt{row\_centered\_he} \\
+product-balanced  & $2/\rr\approx2.4223$ & $\sqrt{\rr}\approx0.909$ & $1/\!\sqrt{\rr}\approx1.100$ & \texttt{row\_centered\_product\_balanced} \\
+forward-balanced  & $2\pi/(\pi-1)\approx2.9339$ & $1.000$ & $1/\rr\approx1.211$ & \texttt{row\_centered\_forward\_balanced} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Over $L$ layers the uncorrected cost is $\rr^{L}$ forward or $\rr^{-L}$ backward. At $L=100$:
+$\rr^{100}\approx4.78\times10^{-9}$ and $\rr^{-100}\approx2.09\times10^{8}$.
+
+%==============================================================
+\section*{5. Post-ReLU DC removal, and the duality}
+
+Modify the forward pass (\emph{not} the weights): $a \leftarrow \relu(z) - c\,\rms(a)$.
+Using $\E[(u-cR)^2]=R^2\big(1-2c/\sqrt\pi+c^2\big)$:
+\begin{empheq}[box=\fbox]{equation}
+  G(c)\;=\;\sqrt{\,1-\frac{2c}{\sqrt\pi}+c^{2}\,},
+  \qquad
+  \boxed{\;G\!\left(\tfrac{1}{\sqrt\pi}\right)=\sqrt{1-\tfrac1\pi}=\sqrt{\tfrac{\pi-1}{\pi}}=\rr\;}
+\end{empheq}
+$G$ is minimised exactly at $c=1/\sqrt\pi$, the constant that removes exactly $\E[u]$; and
+$G(c)<1$ for all $c\in\big(0,\,2/\sqrt\pi\big)$, $2/\sqrt\pi\approx1.1284$.
+
+\hd{Duality (why this is not a new family)}
+\[
+  W\big(a-c\mathbf 1\big) \;=\; Wa - c\,(W\mathbf 1)
+  \qquad\Longrightarrow\qquad
+  W\mathbf 1=0 \;\Rightarrow\; \text{the shift is exactly a no-op.}
+\]
+Row centering kills the DC \emph{on the way in}; the shift kills it \emph{on the way out}.
+They are one intervention, and \textbf{both pay the identical constant $\rr$}. The lock is therefore a
+property of DC removal itself, not of row centering.
+
+\hd{Cosine recursion under the shift}
+With $A(c)=c^2-2c/\sqrt\pi$ (so $G^2=1+A$):
+\[
+  \rho_{\ell+1}=\frac{\chi(\rho_\ell)+A}{1+A}.
+\]
+$\rho=1$ stays a fixed point but its multiplier becomes $1/(1+A)>1$ --- \emph{repelling}, which is
+precisely why the shift attacks collapse. The attracting fixed point solves
+$\Phi(\rho^\ast)=-A$ with $\Phi(\rho)=\big(\chi(\rho)-\rho\big)/(1-\rho)$, decreasing on $[0,1)$
+from $\Phi(0)=1/\pi$. Since $\max_c|A|=1/\pi$ attained at $c=1/\sqrt\pi$, theory predicts
+$\rho^\ast=0$ there and $\rho^\ast>0$ on both sides.
+
+\hd{The cost is transferable, not prohibitive}
+Boosting the weights by $1/G(c)$ restores $\gfwd\approx1$ and drives $\gbwd\to1/\rr$, with
+$\gfwd/\gbwd$ invariant under the boost --- the signature of a lock. So (i) and (ii) are not
+\emph{provably incompatible}; the cost simply moves between the two directions.
+
+%==============================================================
+\section*{6. \texttt{grad\_rescale}: the backward-only correction}
+
+$\mathcal R_r$ is the identity in the forward pass and multiplies the gradient by $r$ in the backward
+pass, inserted after every hidden ReLU. It cancels the forward-balanced $\gbwd=1/\rr$ exactly, and is
+equivalent to a geometric per-layer learning rate $\rr^{\,L-\ell}$.
+
+\textbf{Reach law.} A trainable layer at position $\ell$ picks up $\rr$ raised to the number of
+rescale operations \emph{between it and the loss}. With the rest of the network frozen, autograd stops
+at the first fully-frozen upstream chain, so the reach is wildly asymmetric:
+\[
+  \text{tail window }\{f_{L-1},f_L\}:\ \rr^{1},\rr^{2}=0.826,\,0.682
+  \qquad
+  \text{front window }\{f_1,f_2\}:\ \rr^{L},\rr^{L-1}\approx5\times10^{-9}.
+\]
+Consequence: at the tail the $(\text{init}\times\text{rescale})$ $2\times2$ collapses to a $1\times2$
+--- only the initialization matters. Because $\mathcal R_r$ cannot touch the forward pass, any
+explanation that runs through activations must be an \emph{initialization} story.
+
+%==============================================================
+\section*{7. Dying neurons}
+
+A unit is \emph{dataset-dead} at layer $\ell$ if $z_i^{(\ell)}(x_k)<0$ for every $x_k$ in the dataset;
+its entire row of $\partial\mathcal L/\partial W^{(\ell)}$ is then zero.
+
+Let $A=\{\text{all } N \text{ signs agree}\}$ and $A_-=\{\text{all negative}\}=\{\text{dead}\}$.
+Since $A=A_+\uplus A_-$ and $w\mapsto-w$ gives $\mathbb P(A_+)=\mathbb P(A_-)$:
+\begin{empheq}[box=\fbox]{equation}
+  \mathbb P[\text{dead}] \;=\; \tfrac12\,\mathbb P(A)
+  \qquad\text{(exact --- no limit required)}
+\end{empheq}
+As $\rho\to1$ the activations become collinear, $\mathbb P(A)\to1$, and $\mathbb P[\text{dead}]\to\tfrac12$.
+
+\hd{Pairwise (union) bound --- vacuous in practice}
+$\mathbb P(A)\ge 1-\binom N2\Delta_\ell$ needs $\ell\gtrsim\tfrac32N(N-1)$; for $N=60{,}000$ that is
+depth $5.4\times10^{9}$.
+
+\hd{Slepian bound --- the version that bites}
+$\mathbb P[\forall k: Y_k>0]$ is monotone in every pairwise correlation, so the equicorrelated
+configuration at the floor $\rho=1-\varepsilon$ is \emph{extremal}. Writing
+$Y_k=\sqrt{1-\varepsilon}\,G+\sqrt\varepsilon\,U_k$ with $G,U_k$ i.i.d.\ $\mathcal N(0,1)$:
+\[
+  \mathbb P(A)=2\!\int\!\phi(g)\,\Phi(\lambda g)^{N}\,dg,\qquad
+  \lambda=\sqrt{\tfrac{1-\varepsilon}{\varepsilon}},
+  \qquad
+  \mathbb P(A)\;\ge\;1-C\sqrt{\varepsilon\log N}.
+\]
+The $N$-dependence is \emph{logarithmic}, not quadratic: non-vacuous at $\ell>43$ for $N=60{,}000$.
+
+\hd{Measured}
+He, width 500, $N=512$ probe samples (this quantity is \emph{not} scale-free in $N$):
+dead fraction $0.342 / 0.400 / 0.476$ at $L=30/60/100$. At $L=60$ the Slepian bound gives
+$\mathbb P[\text{dead}]\ge0.3881$ against a measured $0.4000$ --- tight to $3\%$.
+
+%==============================================================
+\newpage
+\section*{8. Initializer catalogue}
+
+All rows: draw $W_{ij}\sim\mathcal N(0,\sigma^2)$ with $\sigma^2$ as given, biases zero.
+``center'' $=$ subtract the row mean; ``rescale'' $=$ set each row's empirical std to the target.
+Row centering alone reduces per-element variance by $(1-1/d)$.
+
+\begin{center}\small
+\begin{tabular}{@{}p{50mm}p{50mm}cc@{}}
+\toprule
+name & definition ($\sigma^2 d$, then structure) & row sum $0$ & lock side \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Baselines}}\\
+\texttt{he} & $2$ & no & --- \\
+\texttt{xavier} & $2d/(\mathrm{fan_{in}}\!+\!\mathrm{fan_{out}})$ & no & --- \\
+\texttt{uniform\_he} & $U(-a,a)$, $a^2/3=2/d$ & no & --- \\
+\texttt{orthogonal} & $Q$ from QR, gain configurable & no & --- \\
+\texttt{orthogonal\_he} & $Q\cdot\sqrt2$ & no & --- \\
+\texttt{orthogonal\_tuned} & $Q\cdot\sqrt{1.65}$ & no & --- \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Row-centered family}}\\
+\texttt{row\_centered\_he} & $2$, center & yes & bwd-bal.\ ($\gfwd=\rr$) \\
+\texttt{row\_centered\_he\_var\_adj} & $2$, center, rescale & yes & --- \\
+\texttt{row\_centered\_final} & $1.65$, center, rescale & yes & tuned to $\gfwd\!\approx\!1$ \\
+\texttt{row\_centered\_forward\_}\-\texttt{balanced} & $2\pi/(\pi-1)\approx2.9339$, center, rescale & yes & fwd-bal.\ ($\gbwd=1/\rr$) \\
+\texttt{row\_centered\_product\_}\-\texttt{balanced} & $2/\rr\approx2.4223$, center, rescale & yes & $\gfwd\gbwd=1$ \\
+\texttt{row\_centered\_layer\_balanced} & per-layer $\sigma^2(\ell)$ schedule, $\eta$ & yes & gradient uniformity \\
+\texttt{row\_centered\_layer\_}\-\texttt{balanced\_he\_base} & as above, He base & yes & backward-aware \\
+\texttt{row\_centered\_layer\_}\-\texttt{balanced\_product\_base} & as above, product base & yes & V2 \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Interpolating / experimental}}\\
+\texttt{partial\_centered\_he} & $2$, center by $\alpha$, rescale & partial & $\alpha$-interpolation \\
+\texttt{centered\_with\_dc\_he} & $2$, center, rescale, $+\delta\sqrt{2/d}$ & nearly & breaks the constraint \\
+\texttt{kernel\_preserving} & optimizer minimising kernel distortion & no & --- \\
+\texttt{custom\_variance} & free $\sigma^2$, free mean & no & --- \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Forward-pass modifiers (not registry initializers)}}\\
+\texttt{relu\_shift}$=c$ & $a\!\leftarrow\!\relu(z)-c\,\rms(a)$, He weights & --- & $\gfwd=G(c)$ \\
+\texttt{grad\_rescale}$=r$ & identity fwd, $\times r$ bwd & --- & cancels $\gbwd$ \\
+\texttt{trainable\_layers} & \texttt{requires\_grad=False} elsewhere & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{How the families relate.} \texttt{row\_centered\_forward\_balanced} is
+\texttt{row\_centered\_he} with rows rescaled by $\approx1/\rr$: same random draw, same statistical
+geometry (mean pairwise cosine $\approx0.32$ at every depth for both), differing only in scale by
+$\rr^{-\ell}$. And by §5, \texttt{relu\_shift} on He weights is the activation-space image of the same
+DC removal. \emph{Three names, one mechanism.}
+
+%==============================================================
+\section*{9. Constants}
+
+\begin{center}\small
+\begin{tabular}{@{}llr@{}}
+\toprule
+symbol & meaning & value \\
+\midrule
+$\rr=\sqrt{(\pi-1)/\pi}$ & the gain-coupling constant & $0.8256452712$ \\
+$1/\rr$ & backward gain, forward-balanced & $1.2111738960$ \\
+$\rr^2=(\pi-1)/\pi$ & centering ratio $\Var(u)/\E[u^2]$ & $0.6816901138$ \\
+$1/\sqrt\pi$ & DC of a rectified Gaussian, $\E[u]/\rms(u)$ & $0.5641895835$ \\
+$1/\sqrt{2\pi}$ & $\E[u]/\sigma$ & $0.3989422804$ \\
+$2\pi/(\pi-1)$ & forward-balanced $\sigma^2 d$ & $2.9338844140$ \\
+$2/\rr$ & product-balanced $\sigma^2 d$ & $2.4223477920$ \\
+$2/\sqrt\pi$ & upper root of $G(c)=1$ & $1.1283791671$ \\
+$c_\chi=2\sqrt2/(3\pi)$ & cubic coefficient in $1-\chi$ & $0.3001054387$ \\
+$4/c_\chi^2=9\pi^2/2$ & constant in $\varepsilon_\ell$ & $44.4132198$ \\
+$\chi(0)=1/\pi$ & one-layer decorrelation floor & $0.3183098862$ \\
+$\rr^{100}$ & forward decay, $L=100$ & $4.779\times10^{-9}$ \\
+$\rr^{-100}$ & backward blow-up, $L=100$ & $2.092\times10^{8}$ \\
+$\rho^\ast_{\text{row-centered}}$ & non-degenerate fixed point ($\approx71^\circ$) & $\approx0.32$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%==============================================================
+\section*{10. Provenance}
+
+\begin{center}\small
+\begin{tabular}{@{}p{55mm}p{105mm}@{}}
+\toprule
+result & where it is established / measured \\
+\midrule
+Half-Gaussian moments, centering ratio & \texttt{ch3\_gradient\_trap.tex} (Lemma, Proposition) \\
+DC blindness & \texttt{ch3\_gradient\_trap.tex} (Proposition) \\
+Gain-coupling lock $\gfwd/\gbwd=\rr$ & \texttt{ch3\_gradient\_trap.tex}, \texttt{prop:fb\_ratio} \\
+Arc-cosine kernel, angle contraction & \texttt{ch1\_framework.tex} (Theorem, Proposition) \\
+Two fixed points, the $71^\circ$ result & \texttt{ch7\_angle\_map.tex} \\
+$G(c)$, duality, lock generalised to DC removal & \texttt{cluster/11\_relu\_shift/README.md}; \emph{not yet in any chapter} \\
+\texttt{grad\_rescale} reach law & \texttt{reports/results/recipe\_decomposition\_funnel.json} \\
+$\varepsilon_\ell$, $\Delta_\ell$, $\mathbb P[\text{dead}]=\tfrac12\mathbb P(A)$ & \texttt{docs/scratch/proofs/dying\_neurons\_clean\_proof.tex} \\
+Slepian bound & \texttt{docs/scratch/proofs/oracle\_spotcheck\_addendum.md} --- \textbf{sketch, needs proving} \\
+Dead fractions, cosine, $k$-NN measurements & \texttt{reports/results/relu\_shift\_geometry\_screen\_*.json} \\
+Empirical outcomes of all campaigns & \texttt{docs/reports/2026-08-15\_campaign10\_followup\_synthesis.md} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{2mm}\hrule\vspace{1.5mm}
+{\footnotesize All numerical constants were recomputed from their closed forms and checked against
+simulation before this card was written. The only item on it that is \emph{not} yet a proof is the
+Slepian step in §7.}
+
+\end{document}
